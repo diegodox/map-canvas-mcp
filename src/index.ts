@@ -12,7 +12,7 @@ import {
 
 // This URI identifies the stable loader. UI releases are selected per tool
 // result through _meta, so the loader can remain cached across deployments.
-const WIDGET_URI = "ui://map-canvas/map-v6.html";
+const WIDGET_URI = "ui://map-canvas/map-v7.html";
 const TILE_DOMAINS = ["https://tile.openstreetmap.org"] as const;
 const REDIRECT_DOMAINS = [
   "https://www.google.com",
@@ -177,7 +177,7 @@ const widgetMeta = {
 function createServer(): McpServer {
   const server = new McpServer({
     name: "map-canvas-mcp",
-    version: "0.6.3",
+    version: "0.6.4",
   });
 
   server.registerResource("map-canvas-widget", WIDGET_URI, {}, async () => ({

@@ -1,5 +1,6 @@
 import L, { type LatLngExpression, type Map as LeafletMap } from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { findHostData } from "./host-data";
 import "./style.css";
 
 type Coordinate = { lat: number; lng: number };
@@ -604,19 +605,14 @@ function request(method: string, params: unknown): Promise<unknown> {
 }
 
 function renderCandidate(value: unknown): boolean {
-  const data = parseMapData(value);
+  const data = findHostData(value, parseMapData);
   if (!data) return false;
   render(data);
   return true;
 }
 
-function viewParams(value: unknown): unknown {
-  return isRecord(value) ? value.params : undefined;
-}
-
 function receiveToolResult(params: unknown): void {
-  if (!isRecord(params)) return;
-  if (!renderCandidate(params.structuredContent)) {
+  if (!renderCandidate(params)) {
     showError("表示できる地点データがありません。");
   }
 }
@@ -649,6 +645,11 @@ window.addEventListener(
 
     if (message.method === "ui/notifications/tool-result") {
       receiveToolResult(message.params);
+      return;
+    }
+
+    if (message.method === "ui/notifications/tool-input") {
+      renderCandidate(message.params);
     }
   },
   { passive: true },
@@ -661,6 +662,7 @@ type DisplayModeResult = { mode?: DisplayMode } | undefined;
 type OpenAIGlobals = {
   toolOutput?: unknown;
   toolInput?: unknown;
+  toolResponseMetadata?: unknown;
   displayMode?: DisplayMode;
   view?: unknown;
 };
@@ -705,7 +707,8 @@ function tryCompatibilityData(): void {
   const openai = (window as OpenAICompatibility).openai;
   renderCandidate(openai?.toolOutput) ||
     renderCandidate(openai?.toolInput) ||
-    renderCandidate(viewParams(openai?.view));
+    renderCandidate(openai?.toolResponseMetadata) ||
+    renderCandidate(openai?.view);
 }
 
 function applyHostGlobals(globals: OpenAIGlobals | undefined): void {
@@ -713,7 +716,8 @@ function applyHostGlobals(globals: OpenAIGlobals | undefined): void {
   if (!hasRendered) {
     renderCandidate(globals?.toolOutput) ||
       renderCandidate(globals?.toolInput) ||
-      renderCandidate(viewParams(globals?.view));
+      renderCandidate(globals?.toolResponseMetadata) ||
+      renderCandidate(globals?.view);
   }
   if (hasRendered) refreshMapLayout();
 }
@@ -755,7 +759,7 @@ if (bootstrapToolResult !== undefined) {
 
 void request("ui/initialize", {
   appCapabilities: {},
-  appInfo: { name: "Map Canvas", version: "0.6.3" },
+  appInfo: { name: "Map Canvas", version: "0.6.4" },
   protocolVersion: "2026-01-26",
 })
   .then(() => {
