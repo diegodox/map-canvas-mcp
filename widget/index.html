@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Map Canvas</title>
+  </head>
+  <body>
+    <main class="shell" aria-live="polite">
+      <header class="header">
+        <div>
+          <p class="eyebrow">Map Canvas</p>
+          <h1 id="title">地図を読み込んでいます</h1>
+        </div>
+        <span id="count" class="count"></span>
+      </header>
+      <section class="map-frame">
+        <div id="map" aria-label="インタラクティブ地図"></div>
+        <div id="loading" class="loading">地図データを待っています…</div>
+      </section>
+      <ol id="places" class="places" aria-label="地点一覧"></ol>
+      <footer>© OpenStreetMap contributors</footer>
+    </main>
+    <script type="module" src="./src.ts"></script>
+  </body>
+</html>

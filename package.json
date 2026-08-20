@@ -1,0 +1,33 @@
+{
+  "name": "map-canvas-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:widget": "node scripts/build-widget.mjs",
+    "build": "npm run build:widget && wrangler deploy --dry-run",
+    "check": "npm run build:widget && tsc --noEmit && node scripts/smoke-test.mjs",
+    "dev": "npm run build:widget && wrangler dev",
+    "deploy": "npm run build:widget && wrangler deploy",
+    "test": "npm run build:widget && node scripts/smoke-test.mjs",
+    "types": "wrangler types"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "^1.7.5",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@modelcontextprotocol/server": "2.0.0",
+    "agents": "0.21.0",
+    "leaflet": "^1.9.4",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260820.1",
+    "@types/leaflet": "^1.9.20",
+    "esbuild": "^0.25.9",
+    "typescript": "^5.9.2",
+    "wrangler": "^4.124.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

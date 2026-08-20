@@ -1,2 +1,46 @@
-# map-canvas-mcp
-地図MCP
+# Map Canvas MCP
+
+An embedded interactive map for MCP Apps hosts such as ChatGPT. The Worker
+returns map data and a bundled Leaflet UI; the user's browser fetches visible
+OpenStreetMap tiles directly from the standard tile servers.
+
+## Local development
+
+```bash
+npm install
+npm run check
+npm run dev
+```
+
+`npm run check` type-checks the Worker and runs MCP smoke tests for
+initialization, tool discovery, tool execution, and widget resource loading.
+
+The MCP endpoint is `http://localhost:8787/mcp`. Test it with the MCP Inspector:
+
+```bash
+npx @modelcontextprotocol/inspector@latest
+```
+
+## Deploy
+
+Connect this repository to Cloudflare Workers Builds, or deploy from a terminal:
+
+```bash
+npm run deploy
+```
+
+The production MCP URL will be:
+
+```text
+https://map-canvas.<account-subdomain>.workers.dev/mcp
+```
+
+No API key is required. Do not add secrets to source or `wrangler.jsonc`; use
+Cloudflare secrets if authentication is added later.
+
+## Tool
+
+`show_map` accepts 1–50 places with decimal latitude/longitude coordinates and
+can optionally connect them in order with a route line.
+
+Map data © OpenStreetMap contributors.
