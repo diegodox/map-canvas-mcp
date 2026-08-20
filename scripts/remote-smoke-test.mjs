@@ -92,7 +92,7 @@ const listed = await eventually(async () => {
   });
   const showMap = result.result.tools.find((tool) => tool.name === "show_map");
   assert.ok(showMap, "show_map was not listed");
-  assert.equal(showMap._meta.ui.resourceUri, "ui://map-canvas/map-v5.html");
+  assert.equal(showMap._meta.ui.resourceUri, "ui://map-canvas/map-v6.html");
   assert.ok(showMap.inputSchema.properties.routes);
   return result;
 });
@@ -138,25 +138,47 @@ const called = await callMcp({
     },
   },
 });
-  assert.equal(called.result.structuredContent.places.length, 2);
-  assert.equal(called.result.structuredContent.routes.length, 1);
+assert.equal(called.result.structuredContent.places.length, 2);
+assert.equal(called.result.structuredContent.routes.length, 1);
+const widgetAsset = called.result._meta?.["mapCanvas/widgetAsset"];
+assert.ok(widgetAsset, "show_map did not return widget asset metadata");
+assert.match(widgetAsset.version, /^[a-f0-9]{16}$/);
+assert.equal(new URL(widgetAsset.url).origin, new URL(baseUrl).origin);
+assert.equal(
+  new URL(widgetAsset.url).pathname,
+  `/assets/v/${widgetAsset.version}/map-widget.js`,
+);
+
+const assetResponse = await fetchWithRetry(widgetAsset.url);
+assert.equal(assetResponse.headers.get("access-control-allow-origin"), "*");
+assert.match(assetResponse.headers.get("cache-control") ?? "", /max-age=31536000/);
+assert.match(assetResponse.headers.get("cache-control") ?? "", /immutable/);
+const widgetRuntime = await assetResponse.text();
+assert.ok(widgetRuntime.includes("OpenStreetMap"));
+assert.ok(widgetRuntime.includes("日別表示"));
+assert.ok(widgetRuntime.includes("popup-link"));
+assert.ok(widgetRuntime.length < 250_000, "Widget bundle is too large for mobile hosts");
+
+const fallbackResponse = await fetchWithRetry(widgetAsset.fallbackUrl);
+assert.equal(fallbackResponse.headers.get("access-control-allow-origin"), "*");
+assert.match(fallbackResponse.headers.get("cache-control") ?? "", /no-cache/);
 
 await eventually(async () => {
   const resource = await callMcp({
     jsonrpc: "2.0",
     id: 4,
     method: "resources/read",
-    params: { uri: "ui://map-canvas/map-v5.html" },
+    params: { uri: "ui://map-canvas/map-v6.html" },
   });
   const widget = resource.result.contents[0];
   assert.equal(widget.mimeType, "text/html;profile=mcp-app");
-  assert.ok(widget.text.includes("OpenStreetMap"));
-  assert.ok(widget.text.includes("日別表示"));
-  assert.ok(widget.text.includes("popup-link"));
-  assert.ok(widget.text.length < 250_000, "Widget bundle is too large for mobile hosts");
-  assert.ok(!widget.text.includes("ResizeObserver"));
+  assert.ok(widget.text.includes("mapCanvas/widgetAsset"));
+  assert.ok(widget.text.includes("ui/notifications/tool-result"));
+  assert.ok(widget.text.includes("import(primaryUrl)"));
+  assert.ok(widget.text.length < 10_000, "Stable widget loader should remain small");
   assert.deepEqual(widget._meta.ui.csp.resourceDomains, [
     "https://tile.openstreetmap.org",
+    "https://map-canvas.android-mxdiego9.workers.dev",
   ]);
 });
 

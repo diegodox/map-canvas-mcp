@@ -40,6 +40,22 @@ type MapData = {
 
 type PlaceEntry = { place: Place; index: number };
 
+type WidgetAsset = {
+  version?: string;
+  url?: string;
+  fallbackUrl?: string;
+};
+
+type MapCanvasBootstrap = {
+  asset?: WidgetAsset;
+  fallback?: boolean;
+  initialToolResult?: unknown;
+};
+
+type WindowWithBootstrap = Window & {
+  __MAP_CANVAS_BOOTSTRAP__?: MapCanvasBootstrap;
+};
+
 const CATEGORY_LABEL: Record<Category, string> = {
   stay: "宿泊",
   sight: "観光",
@@ -716,9 +732,15 @@ window.addEventListener(
   { passive: true },
 );
 
+const bootstrapToolResult = (window as WindowWithBootstrap).__MAP_CANVAS_BOOTSTRAP__
+  ?.initialToolResult;
+if (bootstrapToolResult !== undefined) {
+  receiveToolResult(bootstrapToolResult);
+}
+
 void request("ui/initialize", {
   appCapabilities: {},
-  appInfo: { name: "Map Canvas", version: "0.4.1" },
+  appInfo: { name: "Map Canvas", version: "0.5.0" },
   protocolVersion: "2026-01-26",
 })
   .then(() => {
