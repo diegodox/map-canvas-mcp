@@ -111,6 +111,13 @@ const loadingElement = requiredElement("loading");
 const daysElement = requiredElement("days");
 const resetButton = requiredButton("reset-view");
 const displayModeButton = requiredButton("display-mode");
+const diagnosticsButton = requiredButton("diagnostics");
+const diagnosticsPanel = requiredElement("diagnostics-panel");
+const diagnosticsCloseButton = requiredButton("diagnostics-close");
+const diagnosticsFullscreenButton = requiredButton("diagnostics-fullscreen");
+const diagnosticsSendButton = requiredButton("diagnostics-send");
+const diagnosticsStatusElement = requiredElement("diagnostics-status");
+const diagnosticsLogElement = requiredElement("diagnostics-log");
 const routeNoteElement = requiredElement("route-note");
 
 let map: LeafletMap | undefined;
@@ -227,6 +234,7 @@ function parseMapData(value: unknown): MapData | undefined {
 
 function ensureMap(): LeafletMap {
   if (map) return map;
+  recordDiagnostic("leaflet-create");
   map = L.map("map", {
     zoomControl: true,
     attributionControl: true,
@@ -559,6 +567,7 @@ function renderMapView(data: MapData): void {
 }
 
 function render(data: MapData): void {
+  recordDiagnostic("render-start", { placeCount: data.places.length, routeCount: data.routes.length });
   currentData = data;
   selectedDay = "all";
   titleElement.textContent = data.title;
@@ -566,9 +575,11 @@ function render(data: MapData): void {
   renderMapView(data);
   loadingElement.hidden = true;
   hasRendered = true;
+  recordDiagnostic("render-complete", runtimeGeometry());
 }
 
 function showError(message: string): void {
+  recordDiagnostic("ui-error", { message });
   loadingElement.hidden = false;
   loadingElement.textContent = message;
   loadingElement.classList.add("error");
@@ -597,22 +608,32 @@ function post(message: JsonRpcMessage): void {
 
 function request(method: string, params: unknown): Promise<unknown> {
   const id = nextRequestId++;
+  recordDiagnostic("host-request", { method, id });
   post({ jsonrpc: "2.0", id, method, params });
   return new Promise((resolve, reject) => {
     pendingRequests.set(id, { resolve, reject });
   });
 }
 
-function renderCandidate(value: unknown): boolean {
+function renderCandidate(value: unknown, source = "unknown"): boolean {
   const data = parseMapData(value);
+  recordDiagnostic("render-candidate", {
+    source,
+    present: value !== undefined && value !== null,
+    valid: Boolean(data),
+  });
   if (!data) return false;
   render(data);
   return true;
 }
 
 function receiveToolResult(params: unknown): void {
+  recordDiagnostic("tool-result-notification", {
+    paramsPresent: params !== undefined && params !== null,
+    paramsKeys: isRecord(params) ? Object.keys(params).slice(0, 12) : [],
+  });
   if (!isRecord(params)) return;
-  if (!renderCandidate(params.structuredContent)) {
+  if (!renderCandidate(params.structuredContent, "ui/notifications/tool-result")) {
     showError("表示できる地点データがありません。");
   }
 }
@@ -634,6 +655,11 @@ window.addEventListener(
     if (event.source !== window.parent) return;
     const message = event.data;
     if (!message || message.jsonrpc !== "2.0") return;
+    recordDiagnostic("host-message", {
+      method: message.method ?? null,
+      id: message.id ?? null,
+      hasError: message.error !== undefined,
+    });
 
     if (message.id !== undefined && pendingRequests.has(message.id)) {
       const pending = pendingRequests.get(message.id)!;
@@ -658,25 +684,286 @@ type OpenAIGlobals = {
   toolOutput?: unknown;
   toolInput?: unknown;
   displayMode?: DisplayMode;
+  maxHeight?: number;
+  safeArea?: unknown;
+  theme?: string;
+  view?: unknown;
+  widgetState?: unknown;
+  toolResponseMetadata?: unknown;
 };
 
 type OpenAICompatibility = Window & {
   openai?: OpenAIGlobals & {
     requestDisplayMode?: (options: { mode: DisplayMode }) => Promise<DisplayModeResult>;
     openExternal?: (options: { href: string; redirectUrl?: boolean }) => Promise<unknown>;
+    setWidgetState?: (state: unknown) => void;
+    sendFollowUpMessage?: (options: {
+      prompt: string;
+      scrollToBottom?: boolean;
+    }) => Promise<unknown>;
   };
 };
+
+type DiagnosticDetail = Record<string, unknown>;
+
+type DiagnosticEntry = {
+  at: string;
+  instance: string;
+  event: string;
+  detail?: DiagnosticDetail;
+};
+
+type StoredDiagnostics = {
+  armed: boolean;
+  instance: string;
+  entries: DiagnosticEntry[];
+};
+
+const DIAGNOSTIC_STORAGE_KEY = "map-canvas-runtime-diagnostics-v1";
+const diagnosticInstance =
+  globalThis.crypto?.randomUUID?.().slice(0, 8) ?? Math.random().toString(36).slice(2, 10);
+const restoredDiagnostics = readStoredDiagnostics();
+let diagnosticEntries = restoredDiagnostics?.entries ?? [];
+let diagnosticsArmed = restoredDiagnostics?.armed ?? false;
+let diagnosticsSending = false;
+let restoredHostDiagnostics = false;
+
+function readStoredDiagnostics(): StoredDiagnostics | undefined {
+  try {
+    const value = sessionStorage.getItem(DIAGNOSTIC_STORAGE_KEY);
+    if (!value) return undefined;
+    const parsed: unknown = JSON.parse(value);
+    if (!isRecord(parsed) || !Array.isArray(parsed.entries)) return undefined;
+    return {
+      armed: parsed.armed === true,
+      instance: typeof parsed.instance === "string" ? parsed.instance : "unknown",
+      entries: parsed.entries.filter((entry): entry is DiagnosticEntry => isRecord(entry)).slice(-80),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function rectFor(element: Element | null): DiagnosticDetail | null {
+  if (!element) return null;
+  const rect = element.getBoundingClientRect();
+  return {
+    x: Math.round(rect.x),
+    y: Math.round(rect.y),
+    width: Math.round(rect.width),
+    height: Math.round(rect.height),
+  };
+}
+
+function findWidgetSessionId(value: unknown, depth = 0): string | undefined {
+  if (!isRecord(value) || depth > 4) return undefined;
+  const direct = value["openai/widgetSessionId"];
+  if (typeof direct === "string") return direct;
+  for (const nested of Object.values(value).slice(0, 20)) {
+    const found = findWidgetSessionId(nested, depth + 1);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function runtimeGeometry(): DiagnosticDetail {
+  const openai = (window as OpenAICompatibility).openai;
+  const mapElement = document.getElementById("map");
+  const shell = document.querySelector(".shell");
+  const shellStyle = shell ? getComputedStyle(shell) : undefined;
+  return {
+    displayMode: openai?.displayMode ?? currentDisplayMode,
+    maxHeight: openai?.maxHeight ?? null,
+    safeArea: openai?.safeArea ?? null,
+    view: openai?.view ?? null,
+    theme: openai?.theme ?? null,
+    innerWidth: window.innerWidth,
+    innerHeight: window.innerHeight,
+    visualViewport: window.visualViewport
+      ? {
+          width: Math.round(window.visualViewport.width),
+          height: Math.round(window.visualViewport.height),
+          offsetTop: Math.round(window.visualViewport.offsetTop),
+        }
+      : null,
+    documentElement: rectFor(document.documentElement),
+    body: rectFor(document.body),
+    shell: rectFor(shell),
+    shellStyle: shellStyle
+      ? {
+          display: shellStyle.display,
+          visibility: shellStyle.visibility,
+          opacity: shellStyle.opacity,
+          overflow: shellStyle.overflow,
+        }
+      : null,
+    content: rectFor(document.querySelector(".content")),
+    mapElement: rectFor(mapElement),
+    mapClientSize: mapElement
+      ? { width: mapElement.clientWidth, height: mapElement.clientHeight }
+      : null,
+    leafletSize: map ? { x: map.getSize().x, y: map.getSize().y } : null,
+    mapCreated: Boolean(map),
+    hasRendered,
+    loadingHidden: loadingElement.hidden,
+    toolOutputPresent: openai?.toolOutput !== undefined && openai?.toolOutput !== null,
+    toolOutputValid: Boolean(parseMapData(openai?.toolOutput)),
+    toolInputPresent: openai?.toolInput !== undefined && openai?.toolInput !== null,
+    toolInputValid: Boolean(parseMapData(openai?.toolInput)),
+    widgetStatePresent: openai?.widgetState !== undefined && openai?.widgetState !== null,
+    widgetSessionId: findWidgetSessionId(openai?.toolResponseMetadata) ?? null,
+    globalsKeys: openai ? Object.keys(openai).sort().slice(0, 40) : [],
+  };
+}
+
+function diagnosticsState(): StoredDiagnostics {
+  return {
+    armed: diagnosticsArmed,
+    instance: diagnosticInstance,
+    entries: diagnosticEntries.slice(-80),
+  };
+}
+
+function persistDiagnostics(): void {
+  const state = diagnosticsState();
+  try {
+    sessionStorage.setItem(DIAGNOSTIC_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // The widget-state path below remains available on hosts that block storage.
+  }
+  const openai = (window as OpenAICompatibility).openai;
+  if (!openai?.setWidgetState) return;
+  const previous = isRecord(openai.widgetState) ? openai.widgetState : {};
+  const previousPrivate = isRecord(previous.privateContent) ? previous.privateContent : {};
+  openai.setWidgetState({
+    ...previous,
+    privateContent: {
+      ...previousPrivate,
+      mapCanvasDiagnostics: state,
+    },
+  });
+}
+
+function recordDiagnostic(event: string, detail?: DiagnosticDetail): void {
+  diagnosticEntries.push({
+    at: new Date().toISOString(),
+    instance: diagnosticInstance,
+    event,
+    ...(detail ? { detail } : {}),
+  });
+  diagnosticEntries = diagnosticEntries.slice(-80);
+  if (diagnosticsArmed) persistDiagnostics();
+  refreshDiagnosticsPanel();
+}
+
+function refreshDiagnosticsPanel(): void {
+  diagnosticsStatusElement.textContent = diagnosticsArmed
+    ? `記録中 · ${diagnosticEntries.length}件`
+    : `${diagnosticEntries.length}件`;
+  const recent = diagnosticEntries.slice(-18).map((entry) => ({
+    at: entry.at.slice(11, 23),
+    instance: entry.instance,
+    event: entry.event,
+    ...(entry.detail ? { detail: entry.detail } : {}),
+  }));
+  diagnosticsLogElement.textContent = recent.length
+    ? JSON.stringify(recent, null, 2)
+    : "診断イベントはまだありません。";
+}
+
+function restoreDiagnosticsFromHost(): void {
+  if (restoredHostDiagnostics) return;
+  const openai = (window as OpenAICompatibility).openai;
+  const widgetState = openai?.widgetState;
+  if (!isRecord(widgetState) || !isRecord(widgetState.privateContent)) return;
+  const candidate = widgetState.privateContent.mapCanvasDiagnostics;
+  if (!isRecord(candidate) || !Array.isArray(candidate.entries)) return;
+  restoredHostDiagnostics = true;
+  const hostEntries = candidate.entries.filter((entry): entry is DiagnosticEntry => isRecord(entry));
+  if (hostEntries.length > diagnosticEntries.length) diagnosticEntries = hostEntries.slice(-80);
+  diagnosticsArmed ||= candidate.armed === true;
+  const previousInstance = typeof candidate.instance === "string" ? candidate.instance : "unknown";
+  if (previousInstance !== diagnosticInstance) {
+    recordDiagnostic("widget-remounted", { previousInstance, restoredVia: "widgetState" });
+  }
+}
+
+function diagnosticReport(reason: string): DiagnosticDetail {
+  return {
+    diagnosticVersion: 1,
+    widgetVersion: "0.5.0",
+    resourceUri: "ui://map-canvas/map-v6.html",
+    reason,
+    instance: diagnosticInstance,
+    snapshot: runtimeGeometry(),
+    events: diagnosticEntries.slice(-80),
+  };
+}
+
+async function sendDiagnostics(reason: string): Promise<void> {
+  if (diagnosticsSending) return;
+  const openai = (window as OpenAICompatibility).openai;
+  recordDiagnostic("diagnostic-send-attempt", {
+    reason,
+    sendFollowUpAvailable: Boolean(openai?.sendFollowUpMessage),
+  });
+  if (!openai?.sendFollowUpMessage) {
+    diagnosticsPanel.hidden = false;
+    diagnosticsButton.setAttribute("aria-expanded", "true");
+    diagnosticsStatusElement.textContent = "チャット送信APIなし";
+    return;
+  }
+  diagnosticsSending = true;
+  try {
+    const report = JSON.stringify(diagnosticReport(reason), null, 2).slice(0, 14_000);
+    await openai.sendFollowUpMessage({
+      prompt:
+        "Map Canvasの最大化診断結果です。UIが消える原因を、この実行時情報から分析してください。\n\n```json\n" +
+        report +
+        "\n```",
+      scrollToBottom: true,
+    });
+    diagnosticsArmed = false;
+    try {
+      sessionStorage.removeItem(DIAGNOSTIC_STORAGE_KEY);
+    } catch {
+      // Ignore storage cleanup failures.
+    }
+    persistDiagnostics();
+  } catch (error) {
+    recordDiagnostic("diagnostic-send-error", { error: String(error) });
+    diagnosticsPanel.hidden = false;
+    diagnosticsButton.setAttribute("aria-expanded", "true");
+  } finally {
+    diagnosticsSending = false;
+    refreshDiagnosticsPanel();
+  }
+}
+
+function scheduleAutomaticDiagnostics(reason: string): void {
+  if (!diagnosticsArmed) return;
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      window.setTimeout(() => {
+        recordDiagnostic("automatic-snapshot", { reason, ...runtimeGeometry() });
+        void sendDiagnostics(reason);
+      }, 700);
+    });
+  });
+}
 
 function refreshMapLayout(): void {
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       map?.invalidateSize();
       fitCurrentView();
+      if (diagnosticsArmed) recordDiagnostic("layout-refreshed", runtimeGeometry());
     });
   });
 }
 
 function syncDisplayMode(mode: DisplayMode): void {
+  const previousMode = currentDisplayMode;
   currentDisplayMode = mode;
   const isFullscreen = mode === "fullscreen";
   document.querySelector(".shell")?.setAttribute("data-display-mode", mode);
@@ -685,7 +972,9 @@ function syncDisplayMode(mode: DisplayMode): void {
   displayModeButton.title = isFullscreen ? "元の大きさに戻す" : "地図を最大化";
   displayModeButton.querySelector(".display-mode-icon")!.textContent = isFullscreen ? "⤡" : "⤢";
   displayModeButton.querySelector(".display-mode-label")!.textContent = isFullscreen ? "戻す" : "最大化";
+  recordDiagnostic("display-mode-sync", { previousMode, mode, ...runtimeGeometry() });
   refreshMapLayout();
+  if (isFullscreen) scheduleAutomaticDiagnostics("fullscreen-synchronized");
 }
 
 function refreshHostActions(): void {
@@ -695,32 +984,104 @@ function refreshHostActions(): void {
 }
 
 function tryCompatibilityData(): void {
+  restoreDiagnosticsFromHost();
   refreshHostActions();
   if (hasRendered) return;
   const openai = (window as OpenAICompatibility).openai;
-  renderCandidate(openai?.toolOutput) || renderCandidate(openai?.toolInput);
+  renderCandidate(openai?.toolOutput, "window.openai.toolOutput") ||
+    renderCandidate(openai?.toolInput, "window.openai.toolInput");
 }
 
 function applyHostGlobals(globals: OpenAIGlobals | undefined): void {
+  restoreDiagnosticsFromHost();
+  recordDiagnostic("openai-set-globals", {
+    globalsPresent: Boolean(globals),
+    globalsKeys: globals ? Object.keys(globals).sort().slice(0, 40) : [],
+    toolOutputPresent: globals?.toolOutput !== undefined && globals?.toolOutput !== null,
+    toolInputPresent: globals?.toolInput !== undefined && globals?.toolInput !== null,
+    displayMode: globals?.displayMode ?? null,
+    maxHeight: globals?.maxHeight ?? null,
+  });
   if (globals?.displayMode) syncDisplayMode(globals.displayMode);
   if (!hasRendered) {
-    renderCandidate(globals?.toolOutput) || renderCandidate(globals?.toolInput);
+    renderCandidate(globals?.toolOutput, "openai:set_globals.toolOutput") ||
+      renderCandidate(globals?.toolInput, "openai:set_globals.toolInput");
   }
   if (hasRendered) refreshMapLayout();
 }
 
-resetButton.addEventListener("click", fitCurrentView);
-displayModeButton.addEventListener("click", async () => {
+async function requestDisplayMode(targetMode: DisplayMode, reason: string): Promise<void> {
   const openai = (window as OpenAICompatibility).openai;
-  if (!openai?.requestDisplayMode) return;
-  const targetMode: DisplayMode = currentDisplayMode === "fullscreen" ? "inline" : "fullscreen";
+  if (!openai?.requestDisplayMode) {
+    recordDiagnostic("display-mode-unavailable", { targetMode, reason });
+    return;
+  }
   displayModeButton.disabled = true;
+  diagnosticsFullscreenButton.disabled = true;
+  recordDiagnostic("display-mode-request", { targetMode, reason, ...runtimeGeometry() });
   try {
     const result = await openai.requestDisplayMode({ mode: targetMode });
+    recordDiagnostic("display-mode-result", {
+      targetMode,
+      reason,
+      resultMode: result?.mode ?? null,
+      hostMode: openai.displayMode ?? null,
+      ...runtimeGeometry(),
+    });
     syncDisplayMode(result?.mode ?? openai.displayMode ?? targetMode);
+  } catch (error) {
+    recordDiagnostic("display-mode-error", { targetMode, reason, error: String(error) });
+    if (diagnosticsArmed) await sendDiagnostics("requestDisplayMode-error");
   } finally {
     displayModeButton.disabled = false;
+    diagnosticsFullscreenButton.disabled = false;
   }
+}
+
+resetButton.addEventListener("click", fitCurrentView);
+displayModeButton.addEventListener("click", async () => {
+  const targetMode: DisplayMode = currentDisplayMode === "fullscreen" ? "inline" : "fullscreen";
+  await requestDisplayMode(targetMode, "toolbar");
+});
+
+diagnosticsButton.addEventListener("click", () => {
+  diagnosticsPanel.hidden = !diagnosticsPanel.hidden;
+  diagnosticsButton.setAttribute("aria-expanded", String(!diagnosticsPanel.hidden));
+  recordDiagnostic("diagnostics-panel", { open: !diagnosticsPanel.hidden, ...runtimeGeometry() });
+});
+
+diagnosticsCloseButton.addEventListener("click", () => {
+  diagnosticsPanel.hidden = true;
+  diagnosticsButton.setAttribute("aria-expanded", "false");
+});
+
+diagnosticsSendButton.addEventListener("click", () => {
+  void sendDiagnostics("manual");
+});
+
+diagnosticsFullscreenButton.addEventListener("click", async () => {
+  diagnosticEntries = [];
+  diagnosticsArmed = true;
+  recordDiagnostic("diagnostic-armed", { restoredFromStorage: Boolean(restoredDiagnostics) });
+  persistDiagnostics();
+  diagnosticsPanel.hidden = true;
+  diagnosticsButton.setAttribute("aria-expanded", "false");
+  await requestDisplayMode("fullscreen", "diagnostic");
+});
+
+window.addEventListener("error", (event) => {
+  recordDiagnostic("window-error", {
+    message: event.message,
+    filename: event.filename?.split("/").pop() ?? null,
+    line: event.lineno,
+    column: event.colno,
+  });
+  if (diagnosticsArmed) scheduleAutomaticDiagnostics("window-error");
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  recordDiagnostic("unhandled-rejection", { reason: String(event.reason) });
+  if (diagnosticsArmed) scheduleAutomaticDiagnostics("unhandled-rejection");
 });
 
 window.addEventListener(
@@ -732,6 +1093,12 @@ window.addEventListener(
   { passive: true },
 );
 
+recordDiagnostic("script-ready", {
+  restoredFromStorage: Boolean(restoredDiagnostics),
+  previousInstance: restoredDiagnostics?.instance ?? null,
+  ...runtimeGeometry(),
+});
+
 const bootstrapToolResult = (window as WindowWithBootstrap).__MAP_CANVAS_BOOTSTRAP__
   ?.initialToolResult;
 if (bootstrapToolResult !== undefined) {
@@ -740,10 +1107,11 @@ if (bootstrapToolResult !== undefined) {
 
 void request("ui/initialize", {
   appCapabilities: {},
-  appInfo: { name: "Map Canvas", version: "0.5.1" },
+  appInfo: { name: "Map Canvas", version: "0.6.0" },
   protocolVersion: "2026-01-26",
 })
   .then(() => {
+    recordDiagnostic("ui-initialize-resolved");
     post({
       jsonrpc: "2.0",
       method: "ui/notifications/initialized",
@@ -751,7 +1119,8 @@ void request("ui/initialize", {
     });
     tryCompatibilityData();
   })
-  .catch(() => {
+  .catch((error) => {
+    recordDiagnostic("ui-initialize-error", { error: String(error) });
     tryCompatibilityData();
     if (!hasRendered) showError("ホストへ接続できませんでした。");
   });

@@ -163,6 +163,9 @@ try {
   assert.ok(widgetRuntime.includes("toolOutput"));
   assert.ok(widgetRuntime.includes("openai:set_globals"));
   assert.ok(widgetRuntime.includes("requestAnimationFrame(()=>{requestAnimationFrame"));
+  assert.ok(widgetRuntime.includes("sendFollowUpMessage"));
+  assert.ok(widgetRuntime.includes("setWidgetState"));
+  assert.ok(widgetRuntime.includes("最大化を診断"));
   assert.ok(widgetRuntime.length < 250_000, "Widget bundle is too large for mobile hosts");
   assert.ok(!widgetRuntime.includes("ResizeObserver"));
 
