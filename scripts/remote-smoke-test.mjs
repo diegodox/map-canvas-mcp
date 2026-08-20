@@ -157,6 +157,9 @@ const widgetRuntime = await assetResponse.text();
 assert.ok(widgetRuntime.includes("OpenStreetMap"));
 assert.ok(widgetRuntime.includes("日別表示"));
 assert.ok(widgetRuntime.includes("popup-link"));
+assert.ok(widgetRuntime.includes("sendFollowUpMessage"));
+assert.ok(widgetRuntime.includes("setWidgetState"));
+assert.ok(widgetRuntime.includes("最大化を診断"));
 assert.ok(widgetRuntime.length < 250_000, "Widget bundle is too large for mobile hosts");
 
 const fallbackResponse = await fetchWithRetry(widgetAsset.fallbackUrl);
