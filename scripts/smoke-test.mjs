@@ -162,6 +162,9 @@ try {
   assert.ok(widgetRuntime.includes('?"inline":"fullscreen"'));
   assert.ok(widgetRuntime.includes("toolOutput"));
   assert.ok(widgetRuntime.includes("openai:set_globals"));
+  assert.ok(widgetRuntime.includes("openai:set_globals.view.params"));
+  assert.ok(widgetRuntime.includes("viewParamsValid"));
+  assert.ok(widgetRuntime.includes("viewSummary"));
   assert.ok(widgetRuntime.includes("requestAnimationFrame(()=>{requestAnimationFrame"));
   assert.ok(widgetRuntime.includes("sendFollowUpMessage"));
   assert.ok(widgetRuntime.includes("setWidgetState"));
