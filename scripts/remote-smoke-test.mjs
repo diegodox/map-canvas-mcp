@@ -149,22 +149,25 @@ assert.equal(
   `/assets/v/${widgetAsset.version}/map-widget.js`,
 );
 
-const assetResponse = await fetchWithRetry(widgetAsset.url);
-assert.equal(assetResponse.headers.get("access-control-allow-origin"), "*");
-assert.match(assetResponse.headers.get("cache-control") ?? "", /max-age=31536000/);
-assert.match(assetResponse.headers.get("cache-control") ?? "", /immutable/);
-const widgetRuntime = await assetResponse.text();
-assert.ok(widgetRuntime.includes("OpenStreetMap"));
-assert.ok(widgetRuntime.includes("日別表示"));
-assert.ok(widgetRuntime.includes("popup-link"));
-assert.ok(widgetRuntime.includes("toolResponseMetadata"));
-assert.ok(widgetRuntime.includes("mcp_tool_result"));
-assert.ok(widgetRuntime.includes("ui/notifications/tool-input"));
-assert.ok(widgetRuntime.includes("safe-area-inset-right) + 104px"));
-assert.ok(!widgetRuntime.includes("sendFollowUpMessage"));
-assert.ok(!widgetRuntime.includes("map-canvas-runtime-diagnostics"));
-assert.ok(!widgetRuntime.includes("最大化を診断"));
-assert.ok(widgetRuntime.length < 250_000, "Widget bundle is too large for mobile hosts");
+await eventually(async () => {
+  const assetResponse = await fetchWithRetry(widgetAsset.url);
+  assert.equal(assetResponse.headers.get("access-control-allow-origin"), "*");
+  assert.match(assetResponse.headers.get("cache-control") ?? "", /max-age=31536000/);
+  assert.match(assetResponse.headers.get("cache-control") ?? "", /immutable/);
+  const runtime = await assetResponse.text();
+  assert.ok(runtime.includes("OpenStreetMap"));
+  assert.ok(runtime.includes("日別表示"));
+  assert.ok(runtime.includes("popup-link"));
+  assert.ok(runtime.includes("toolResponseMetadata"));
+  assert.ok(runtime.includes("mcp_tool_result"));
+  assert.ok(runtime.includes("ui/notifications/tool-input"));
+  assert.ok(runtime.includes("safe-area-inset-right) + 104px"));
+  assert.ok(!runtime.includes("sendFollowUpMessage"));
+  assert.ok(!runtime.includes("map-canvas-runtime-diagnostics"));
+  assert.ok(!runtime.includes("最大化を診断"));
+  assert.ok(runtime.length < 250_000, "Widget bundle is too large for mobile hosts");
+  return runtime;
+});
 
 const fallbackResponse = await fetchWithRetry(widgetAsset.fallbackUrl);
 assert.equal(fallbackResponse.headers.get("access-control-allow-origin"), "*");
