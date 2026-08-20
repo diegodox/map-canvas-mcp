@@ -8,18 +8,34 @@
   <body>
     <main class="shell" aria-live="polite">
       <header class="header">
-        <div>
+        <div class="header-copy">
           <p class="eyebrow">Map Canvas</p>
           <h1 id="title">地図を読み込んでいます</h1>
         </div>
-        <span id="count" class="count"></span>
+        <div class="header-actions">
+          <button id="reset-view" class="toolbar-button" type="button">全体表示</button>
+          <button id="fullscreen" class="toolbar-button" type="button" hidden>全画面</button>
+          <span id="count" class="count"></span>
+        </div>
       </header>
-      <section class="map-frame">
-        <div id="map" aria-label="インタラクティブ地図"></div>
-        <div id="loading" class="loading">地図データを待っています…</div>
-      </section>
-      <ol id="places" class="places" aria-label="地点一覧"></ol>
-      <footer>© OpenStreetMap contributors</footer>
+      <nav id="days" class="days" aria-label="日別表示" hidden></nav>
+      <div class="content">
+        <section class="map-frame">
+          <div id="map" aria-label="インタラクティブ地図"></div>
+          <div id="loading" class="loading">地図データを待っています…</div>
+        </section>
+        <aside class="itinerary" aria-label="旅程">
+          <div class="itinerary-heading">
+            <strong>旅程</strong>
+            <span>地点を選択</span>
+          </div>
+          <ol id="places" class="places" aria-label="地点一覧"></ol>
+        </aside>
+      </div>
+      <footer>
+        <span id="route-note">地点を選ぶと詳細を表示</span>
+        <span>© OpenStreetMap contributors</span>
+      </footer>
     </main>
     <script type="module" src="./src.ts"></script>
   </body>
