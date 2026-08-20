@@ -63,7 +63,7 @@ const initialized = await callMcp({
   params: {
     protocolVersion,
     capabilities: {},
-    clientInfo: { name: "map-canvas-production-smoke", version: "0.1.0" },
+    clientInfo: { name: "map-canvas-production-smoke", version: "0.2.0" },
   },
 });
 assert.equal(initialized.result.protocolVersion, protocolVersion);
@@ -76,7 +76,7 @@ const listed = await callMcp({
 });
 const showMap = listed.result.tools.find((tool) => tool.name === "show_map");
 assert.ok(showMap, "show_map was not listed");
-assert.equal(showMap._meta.ui.resourceUri, "ui://map-canvas/map-v1.html");
+assert.equal(showMap._meta.ui.resourceUri, "ui://map-canvas/map-v2.html");
 
 const called = await callMcp({
   jsonrpc: "2.0",
@@ -100,15 +100,15 @@ const resource = await callMcp({
   jsonrpc: "2.0",
   id: 4,
   method: "resources/read",
-  params: { uri: "ui://map-canvas/map-v1.html" },
+  params: { uri: "ui://map-canvas/map-v2.html" },
 });
 const widget = resource.result.contents[0];
 assert.equal(widget.mimeType, "text/html;profile=mcp-app");
 assert.ok(widget.text.includes("OpenStreetMap"));
+assert.ok(widget.text.length < 250_000, "Widget bundle is too large for mobile hosts");
+assert.ok(!widget.text.includes("ResizeObserver"));
 assert.deepEqual(widget._meta.ui.csp.resourceDomains, [
-  "https://a.tile.openstreetmap.org",
-  "https://b.tile.openstreetmap.org",
-  "https://c.tile.openstreetmap.org",
+  "https://tile.openstreetmap.org",
 ]);
 
 console.log("Production smoke test passed: health, initialize, tools/list, tools/call, resources/read");
