@@ -101,7 +101,10 @@ h1 {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: 8px;
+  max-height: 208px;
   margin: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 12px;
   list-style: none;
 }
@@ -211,7 +214,7 @@ footer {
   }
 
   .map-frame {
-    min-height: 330px;
+    min-height: 300px;
   }
 
   .places {
