@@ -1,4 +1,3 @@
-import { App } from "@modelcontextprotocol/ext-apps";
 import L, { type LatLngExpression, type Map as LeafletMap } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "./style.css";
@@ -24,6 +23,7 @@ const loadingElement = requiredElement("loading");
 
 let map: LeafletMap | undefined;
 let renderedLayers: L.LayerGroup | undefined;
+let hasRendered = false;
 
 function requiredElement(id: string): HTMLElement {
   const element = document.getElementById(id);
@@ -84,8 +84,7 @@ function ensureMap(): LeafletMap {
     zoomControl: true,
     attributionControl: true,
   });
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    subdomains: "abc",
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution:
       '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
@@ -188,7 +187,11 @@ function render(data: MapData): void {
   countElement.textContent = `${data.places.length}地点`;
   loadingElement.hidden = true;
   renderList(data, markers);
-  requestAnimationFrame(() => activeMap.invalidateSize());
+  hasRendered = true;
+  requestAnimationFrame(() => {
+    activeMap.invalidateSize();
+    sendSizeOnce();
+  });
 }
 
 function showError(message: string): void {
@@ -196,23 +199,110 @@ function showError(message: string): void {
   loadingElement.classList.add("error");
 }
 
-const app = new App({ name: "Map Canvas", version: "0.1.0" });
+type JsonRpcMessage = {
+  jsonrpc?: string;
+  id?: number;
+  method?: string;
+  params?: unknown;
+  result?: unknown;
+  error?: unknown;
+};
 
-app.ontoolresult = (result) => {
-  const data = parseMapData(result.structuredContent);
-  if (!data) {
-    showError("表示できる地点データがありません。");
-    return;
-  }
+type PendingRequest = {
+  resolve: (value: unknown) => void;
+  reject: (reason: unknown) => void;
+};
+
+const pendingRequests = new Map<number, PendingRequest>();
+let nextRequestId = 1;
+
+function post(message: JsonRpcMessage): void {
+  window.parent.postMessage(message, "*");
+}
+
+function request(method: string, params: unknown): Promise<unknown> {
+  const id = nextRequestId++;
+  post({ jsonrpc: "2.0", id, method, params });
+  return new Promise((resolve, reject) => {
+    pendingRequests.set(id, { resolve, reject });
+  });
+}
+
+function renderCandidate(value: unknown): boolean {
+  const data = parseMapData(value);
+  if (!data) return false;
   render(data);
+  return true;
+}
+
+function receiveToolResult(params: unknown): void {
+  if (!isRecord(params)) return;
+  if (!renderCandidate(params.structuredContent)) {
+    showError("表示できる地点データがありません。");
+  }
+}
+
+function sendSizeOnce(): void {
+  // A single bounded notification avoids ResizeObserver feedback loops in
+  // mobile hosts while still giving the iframe enough room to display.
+  post({
+    jsonrpc: "2.0",
+    method: "ui/notifications/size-changed",
+    params: {
+      width: Math.ceil(document.documentElement.getBoundingClientRect().width),
+      height: Math.min(Math.ceil(document.body.scrollHeight), 640),
+    },
+  });
+}
+
+window.addEventListener(
+  "message",
+  (event: MessageEvent<JsonRpcMessage>) => {
+    if (event.source !== window.parent) return;
+    const message = event.data;
+    if (!message || message.jsonrpc !== "2.0") return;
+
+    if (message.id !== undefined && pendingRequests.has(message.id)) {
+      const pending = pendingRequests.get(message.id)!;
+      pendingRequests.delete(message.id);
+      if (message.error !== undefined) pending.reject(message.error);
+      else pending.resolve(message.result);
+      return;
+    }
+
+    if (message.method === "ui/notifications/tool-result") {
+      receiveToolResult(message.params);
+    }
+  },
+  { passive: true },
+);
+
+type OpenAICompatibility = Window & {
+  openai?: { toolOutput?: unknown; toolInput?: unknown };
 };
 
-app.onerror = (error) => {
-  showError(`地図を初期化できませんでした：${error.message}`);
-};
+function tryCompatibilityData(): void {
+  if (hasRendered) return;
+  const openai = (window as OpenAICompatibility).openai;
+  renderCandidate(openai?.toolOutput) || renderCandidate(openai?.toolInput);
+}
 
-void app.connect().catch((error: unknown) => {
-  showError(
-    `ホストへ接続できませんでした：${error instanceof Error ? error.message : "unknown error"}`,
-  );
-});
+void request("ui/initialize", {
+  appCapabilities: {},
+  appInfo: { name: "Map Canvas", version: "0.2.0" },
+  protocolVersion: "2026-01-26",
+})
+  .then(() => {
+    post({
+      jsonrpc: "2.0",
+      method: "ui/notifications/initialized",
+      params: {},
+    });
+    tryCompatibilityData();
+  })
+  .catch(() => {
+    // ChatGPT's compatibility globals can still provide the result if the
+    // standards handshake is unavailable in an older host.
+    tryCompatibilityData();
+    if (!hasRendered) showError("ホストへ接続できませんでした。");
+  });
