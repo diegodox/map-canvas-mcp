@@ -720,13 +720,21 @@ type StoredDiagnostics = {
 };
 
 const DIAGNOSTIC_STORAGE_KEY = "map-canvas-runtime-diagnostics-v1";
-const diagnosticInstance =
-  globalThis.crypto?.randomUUID?.().slice(0, 8) ?? Math.random().toString(36).slice(2, 10);
+const diagnosticInstance = createDiagnosticInstance();
 const restoredDiagnostics = readStoredDiagnostics();
 let diagnosticEntries = restoredDiagnostics?.entries ?? [];
 let diagnosticsArmed = restoredDiagnostics?.armed ?? false;
 let diagnosticsSending = false;
 let restoredHostDiagnostics = false;
+let widgetStatePersistError: string | undefined;
+
+function createDiagnosticInstance(): string {
+  try {
+    return globalThis.crypto?.randomUUID?.().slice(0, 8) ?? Math.random().toString(36).slice(2, 10);
+  } catch {
+    return Math.random().toString(36).slice(2, 10);
+  }
+}
 
 function readStoredDiagnostics(): StoredDiagnostics | undefined {
   try {
@@ -767,53 +775,63 @@ function findWidgetSessionId(value: unknown, depth = 0): string | undefined {
 }
 
 function runtimeGeometry(): DiagnosticDetail {
-  const openai = (window as OpenAICompatibility).openai;
-  const mapElement = document.getElementById("map");
-  const shell = document.querySelector(".shell");
-  const shellStyle = shell ? getComputedStyle(shell) : undefined;
-  return {
-    displayMode: openai?.displayMode ?? currentDisplayMode,
-    maxHeight: openai?.maxHeight ?? null,
-    safeArea: openai?.safeArea ?? null,
-    view: openai?.view ?? null,
-    theme: openai?.theme ?? null,
-    innerWidth: window.innerWidth,
-    innerHeight: window.innerHeight,
-    visualViewport: window.visualViewport
-      ? {
-          width: Math.round(window.visualViewport.width),
-          height: Math.round(window.visualViewport.height),
-          offsetTop: Math.round(window.visualViewport.offsetTop),
-        }
-      : null,
-    documentElement: rectFor(document.documentElement),
-    body: rectFor(document.body),
-    shell: rectFor(shell),
-    shellStyle: shellStyle
-      ? {
-          display: shellStyle.display,
-          visibility: shellStyle.visibility,
-          opacity: shellStyle.opacity,
-          overflow: shellStyle.overflow,
-        }
-      : null,
-    content: rectFor(document.querySelector(".content")),
-    mapElement: rectFor(mapElement),
-    mapClientSize: mapElement
-      ? { width: mapElement.clientWidth, height: mapElement.clientHeight }
-      : null,
-    leafletSize: map ? { x: map.getSize().x, y: map.getSize().y } : null,
-    mapCreated: Boolean(map),
-    hasRendered,
-    loadingHidden: loadingElement.hidden,
-    toolOutputPresent: openai?.toolOutput !== undefined && openai?.toolOutput !== null,
-    toolOutputValid: Boolean(parseMapData(openai?.toolOutput)),
-    toolInputPresent: openai?.toolInput !== undefined && openai?.toolInput !== null,
-    toolInputValid: Boolean(parseMapData(openai?.toolInput)),
-    widgetStatePresent: openai?.widgetState !== undefined && openai?.widgetState !== null,
-    widgetSessionId: findWidgetSessionId(openai?.toolResponseMetadata) ?? null,
-    globalsKeys: openai ? Object.keys(openai).sort().slice(0, 40) : [],
-  };
+  try {
+    const openai = (window as OpenAICompatibility).openai;
+    const mapElement = document.getElementById("map");
+    const shell = document.querySelector(".shell");
+    const shellStyle = shell ? getComputedStyle(shell) : undefined;
+    return {
+      displayMode: openai?.displayMode ?? currentDisplayMode,
+      maxHeight: openai?.maxHeight ?? null,
+      safeArea: openai?.safeArea ?? null,
+      view: openai?.view ?? null,
+      theme: openai?.theme ?? null,
+      innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight,
+      visualViewport: window.visualViewport
+        ? {
+            width: Math.round(window.visualViewport.width),
+            height: Math.round(window.visualViewport.height),
+            offsetTop: Math.round(window.visualViewport.offsetTop),
+          }
+        : null,
+      documentElement: rectFor(document.documentElement),
+      body: rectFor(document.body),
+      shell: rectFor(shell),
+      shellStyle: shellStyle
+        ? {
+            display: shellStyle.display,
+            visibility: shellStyle.visibility,
+            opacity: shellStyle.opacity,
+            overflow: shellStyle.overflow,
+          }
+        : null,
+      content: rectFor(document.querySelector(".content")),
+      mapElement: rectFor(mapElement),
+      mapClientSize: mapElement
+        ? { width: mapElement.clientWidth, height: mapElement.clientHeight }
+        : null,
+      leafletSize: map ? { x: map.getSize().x, y: map.getSize().y } : null,
+      mapCreated: Boolean(map),
+      hasRendered,
+      loadingHidden: loadingElement.hidden,
+      toolOutputPresent: openai?.toolOutput !== undefined && openai?.toolOutput !== null,
+      toolOutputValid: Boolean(parseMapData(openai?.toolOutput)),
+      toolInputPresent: openai?.toolInput !== undefined && openai?.toolInput !== null,
+      toolInputValid: Boolean(parseMapData(openai?.toolInput)),
+      widgetStatePresent: openai?.widgetState !== undefined && openai?.widgetState !== null,
+      widgetStatePersistError: widgetStatePersistError ?? null,
+      widgetSessionId: findWidgetSessionId(openai?.toolResponseMetadata) ?? null,
+      globalsKeys: openai ? Object.keys(openai).sort().slice(0, 40) : [],
+    };
+  } catch (error) {
+    return {
+      snapshotError: String(error),
+      displayMode: currentDisplayMode,
+      mapCreated: Boolean(map),
+      hasRendered,
+    };
+  }
 }
 
 function diagnosticsState(): StoredDiagnostics {
@@ -835,31 +853,50 @@ function persistDiagnostics(): void {
   if (!openai?.setWidgetState) return;
   const previous = isRecord(openai.widgetState) ? openai.widgetState : {};
   const previousPrivate = isRecord(previous.privateContent) ? previous.privateContent : {};
-  openai.setWidgetState({
-    ...previous,
-    privateContent: {
-      ...previousPrivate,
-      mapCanvasDiagnostics: state,
-    },
-  });
+  const compactState: StoredDiagnostics = {
+    armed: state.armed,
+    instance: state.instance,
+    entries: state.entries.slice(-16).map(({ at, instance, event }) => ({
+      at,
+      instance,
+      event,
+    })),
+  };
+  try {
+    openai.setWidgetState({
+      ...previous,
+      privateContent: {
+        ...previousPrivate,
+        mapCanvasDiagnostics: compactState,
+      },
+    });
+    widgetStatePersistError = undefined;
+  } catch (error) {
+    widgetStatePersistError = String(error);
+  }
 }
 
 function recordDiagnostic(event: string, detail?: DiagnosticDetail): void {
-  diagnosticEntries.push({
-    at: new Date().toISOString(),
-    instance: diagnosticInstance,
-    event,
-    ...(detail ? { detail } : {}),
-  });
-  diagnosticEntries = diagnosticEntries.slice(-80);
-  if (diagnosticsArmed) persistDiagnostics();
-  refreshDiagnosticsPanel();
+  try {
+    diagnosticEntries.push({
+      at: new Date().toISOString(),
+      instance: diagnosticInstance,
+      event,
+      ...(detail ? { detail } : {}),
+    });
+    diagnosticEntries = diagnosticEntries.slice(-80);
+    if (diagnosticsArmed) persistDiagnostics();
+    refreshDiagnosticsPanel();
+  } catch {
+    // Diagnostics must never prevent the map from rendering.
+  }
 }
 
 function refreshDiagnosticsPanel(): void {
   diagnosticsStatusElement.textContent = diagnosticsArmed
     ? `記録中 · ${diagnosticEntries.length}件`
     : `${diagnosticEntries.length}件`;
+  if (diagnosticsPanel.hidden) return;
   const recent = diagnosticEntries.slice(-18).map((entry) => ({
     at: entry.at.slice(11, 23),
     instance: entry.instance,
@@ -891,7 +928,7 @@ function restoreDiagnosticsFromHost(): void {
 function diagnosticReport(reason: string): DiagnosticDetail {
   return {
     diagnosticVersion: 1,
-    widgetVersion: "0.5.0",
+    widgetVersion: "0.6.1",
     resourceUri: "ui://map-canvas/map-v6.html",
     reason,
     instance: diagnosticInstance,
@@ -915,7 +952,7 @@ async function sendDiagnostics(reason: string): Promise<void> {
   }
   diagnosticsSending = true;
   try {
-    const report = JSON.stringify(diagnosticReport(reason), null, 2).slice(0, 14_000);
+    const report = JSON.stringify(diagnosticReport(reason), null, 2).slice(0, 8_000);
     await openai.sendFollowUpMessage({
       prompt:
         "Map Canvasの最大化診断結果です。UIが消える原因を、この実行時情報から分析してください。\n\n```json\n" +
