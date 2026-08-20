@@ -174,13 +174,23 @@ assert.equal(fallbackResponse.headers.get("access-control-allow-origin"), "*");
 assert.match(fallbackResponse.headers.get("cache-control") ?? "", /no-cache/);
 
 await eventually(async () => {
-  const resource = await callMcp({
-    jsonrpc: "2.0",
-    id: 4,
-    method: "resources/read",
-    params: { uri: "ui://map-canvas/map-v7.html" },
-  });
-  const widget = resource.result.contents[0];
+  const widgets = [];
+  for (const [index, uri] of [
+    "ui://map-canvas/map-v6.html",
+    "ui://map-canvas/map-v7.html",
+  ].entries()) {
+    const resource = await callMcp({
+      jsonrpc: "2.0",
+      id: 4 + index,
+      method: "resources/read",
+      params: { uri },
+    });
+    const widget = resource.result.contents[0];
+    assert.equal(widget.uri, uri);
+    widgets.push(widget);
+  }
+  const widget = widgets.at(-1);
+  assert.equal(widgets[0].text, widget.text);
   assert.equal(widget.mimeType, "text/html;profile=mcp-app");
   assert.ok(widget.text.includes("mapCanvas/widgetAsset"));
   assert.ok(widget.text.includes("ui/notifications/tool-result"));
