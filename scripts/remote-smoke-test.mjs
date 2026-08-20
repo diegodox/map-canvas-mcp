@@ -92,7 +92,8 @@ const listed = await eventually(async () => {
   });
   const showMap = result.result.tools.find((tool) => tool.name === "show_map");
   assert.ok(showMap, "show_map was not listed");
-  assert.equal(showMap._meta.ui.resourceUri, "ui://map-canvas/map-v2.html");
+  assert.equal(showMap._meta.ui.resourceUri, "ui://map-canvas/map-v3.html");
+  assert.ok(showMap.inputSchema.properties.routes);
   return result;
 });
 
@@ -105,25 +106,53 @@ const called = await callMcp({
     arguments: {
       title: "Production smoke test",
       places: [
-        { id: "tokyo", label: "Tokyo Station", lat: 35.6812, lng: 139.7671 },
-        { id: "asakusa", label: "Asakusa", lat: 35.7148, lng: 139.7967 },
+        {
+          id: "tokyo",
+          label: "Tokyo Station",
+          lat: 35.6812,
+          lng: 139.7671,
+          day: "Day 1",
+          time: "09:00",
+          category: "transit",
+          status: "confirmed",
+        },
+        {
+          id: "asakusa",
+          label: "Asakusa",
+          lat: 35.7148,
+          lng: 139.7967,
+          day: "Day 1",
+          category: "sight",
+          status: "planned",
+        },
       ],
-      connectPlaces: true,
+      routes: [
+        {
+          fromPlaceId: "tokyo",
+          toPlaceId: "asakusa",
+          mode: "rail",
+          label: "about 20 min",
+          geometry: "schematic",
+        },
+      ],
     },
   },
 });
-assert.equal(called.result.structuredContent.places.length, 2);
+  assert.equal(called.result.structuredContent.places.length, 2);
+  assert.equal(called.result.structuredContent.routes.length, 1);
 
 await eventually(async () => {
   const resource = await callMcp({
     jsonrpc: "2.0",
     id: 4,
     method: "resources/read",
-    params: { uri: "ui://map-canvas/map-v2.html" },
+    params: { uri: "ui://map-canvas/map-v3.html" },
   });
   const widget = resource.result.contents[0];
   assert.equal(widget.mimeType, "text/html;profile=mcp-app");
   assert.ok(widget.text.includes("OpenStreetMap"));
+  assert.ok(widget.text.includes("日別表示"));
+  assert.ok(widget.text.includes("popup-link"));
   assert.ok(widget.text.length < 250_000, "Widget bundle is too large for mobile hosts");
   assert.ok(!widget.text.includes("ResizeObserver"));
   assert.deepEqual(widget._meta.ui.csp.resourceDomains, [

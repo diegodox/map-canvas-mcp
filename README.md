@@ -55,7 +55,18 @@ repository.
 
 ## Tool
 
-`show_map` accepts 1–50 places with decimal latitude/longitude coordinates and
-can optionally connect them in order with a route line.
+`show_map` accepts 1–50 places with decimal latitude/longitude coordinates.
+Simple callers can still use `connectPlaces`; travel itineraries can also add:
+
+- day/date and time labels with day filtering
+- categories and confirmed/planned/tentative status
+- transport legs for walking, car, taxi, bus, rail, ferry, and flights
+- schematic straight connections or actual route geometry
+- verified place links, with a Google Maps coordinate link as the fallback
+
+The widget uses numbered, category-colored markers, an itinerary panel, a
+reset-view action, and optional fullscreen presentation in ChatGPT. Schematic
+legs are dashed and explicitly labeled so they are not mistaken for
+turn-by-turn navigation.
 
 Map data © OpenStreetMap contributors.

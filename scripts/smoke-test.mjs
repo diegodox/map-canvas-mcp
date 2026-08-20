@@ -86,7 +86,9 @@ try {
   });
   const showMap = listed.result.tools.find((tool) => tool.name === "show_map");
   assert.ok(showMap, "show_map was not listed");
-  assert.equal(showMap._meta.ui.resourceUri, "ui://map-canvas/map-v2.html");
+  assert.equal(showMap._meta.ui.resourceUri, "ui://map-canvas/map-v3.html");
+  assert.ok(showMap.inputSchema.properties.routes);
+  assert.ok(showMap.inputSchema.properties.places.items.properties.day);
 
   const called = await callMcp(worker, {
     jsonrpc: "2.0",
@@ -97,29 +99,83 @@ try {
       arguments: {
         title: "Tokyo test",
         places: [
-          { id: "tokyo", label: "Tokyo Station", lat: 35.6812, lng: 139.7671 },
-          { id: "asakusa", label: "Asakusa", lat: 35.7148, lng: 139.7967 },
+          {
+            id: "tokyo",
+            label: "Tokyo Station",
+            lat: 35.6812,
+            lng: 139.7671,
+            day: "Day 1",
+            time: "09:00",
+            category: "transit",
+            status: "confirmed",
+          },
+          {
+            id: "asakusa",
+            label: "Asakusa",
+            lat: 35.7148,
+            lng: 139.7967,
+            day: "Day 1",
+            category: "sight",
+            status: "planned",
+          },
+        ],
+        routes: [
+          {
+            id: "tokyo-asakusa",
+            fromPlaceId: "tokyo",
+            toPlaceId: "asakusa",
+            mode: "rail",
+            label: "約20分",
+            geometry: "schematic",
+          },
+        ],
+      },
+    },
+  });
+  assert.equal(called.result.structuredContent.places.length, 2);
+  assert.equal(called.result.structuredContent.routes.length, 1);
+  assert.equal(called.result.structuredContent.routes[0].mode, "rail");
+
+  const backwardCompatible = await callMcp(worker, {
+    jsonrpc: "2.0",
+    id: 4,
+    method: "tools/call",
+    params: {
+      name: "show_map",
+      arguments: {
+        title: "Legacy map",
+        places: [
+          { id: "a", label: "A", lat: 35.68, lng: 139.76 },
+          { id: "b", label: "B", lat: 35.69, lng: 139.77 },
         ],
         connectPlaces: true,
       },
     },
   });
-  assert.equal(called.result.structuredContent.places.length, 2);
-  assert.equal(called.result.structuredContent.connectPlaces, true);
+  assert.equal(backwardCompatible.result.structuredContent.connectPlaces, true);
+  assert.deepEqual(backwardCompatible.result.structuredContent.routes, []);
 
   const resource = await callMcp(worker, {
     jsonrpc: "2.0",
-    id: 4,
+    id: 5,
     method: "resources/read",
-    params: { uri: "ui://map-canvas/map-v2.html" },
+    params: { uri: "ui://map-canvas/map-v3.html" },
   });
   const widget = resource.result.contents[0];
   assert.equal(widget.mimeType, "text/html;profile=mcp-app");
   assert.ok(widget.text.includes("OpenStreetMap"));
+  assert.ok(widget.text.includes("日別表示"));
+  assert.ok(widget.text.includes("popup-link"));
   assert.ok(widget.text.length < 250_000, "Widget bundle is too large for mobile hosts");
   assert.ok(!widget.text.includes("ResizeObserver"));
   assert.deepEqual(widget._meta.ui.csp.resourceDomains, [
     "https://tile.openstreetmap.org",
+  ]);
+  assert.deepEqual(widget._meta["openai/widgetCSP"].redirect_domains, [
+    "https://www.google.com",
+    "https://maps.app.goo.gl",
+    "https://maps.apple.com",
+    "https://www.openstreetmap.org",
   ]);
 
   console.log("Smoke test passed: health, initialize, tools/list, tools/call, resources/read");
