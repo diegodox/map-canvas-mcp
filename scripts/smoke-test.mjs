@@ -208,6 +208,14 @@ try {
   assert.ok(widget.text.includes("assets/current/map-widget.js"));
   assert.ok(widget.text.length < 10_000, "Stable widget loader should remain small");
   assert.ok(!widget.text.includes("OpenStreetMap"));
+  assert.equal(
+    widget._meta.ui.domain,
+    "https://map-canvas.android-mxdiego9.workers.dev",
+  );
+  assert.equal(
+    widget._meta["openai/widgetDomain"],
+    "https://map-canvas.android-mxdiego9.workers.dev",
+  );
   assert.deepEqual(widget._meta.ui.csp.resourceDomains, [
     "https://tile.openstreetmap.org",
     "https://map-canvas.android-mxdiego9.workers.dev",
