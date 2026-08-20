@@ -51,6 +51,21 @@ async function callMcp(message) {
   return parseMcpResponse(response, body);
 }
 
+async function eventually(check, attempts = 15) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await check();
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts) {
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+      }
+    }
+  }
+  throw lastError;
+}
+
 const healthResponse = await fetchWithRetry(new URL("/", baseUrl));
 const health = await healthResponse.json();
 assert.equal(health.status, "ok");
@@ -68,15 +83,18 @@ const initialized = await callMcp({
 });
 assert.equal(initialized.result.protocolVersion, protocolVersion);
 
-const listed = await callMcp({
-  jsonrpc: "2.0",
-  id: 2,
-  method: "tools/list",
-  params: {},
+const listed = await eventually(async () => {
+  const result = await callMcp({
+    jsonrpc: "2.0",
+    id: 2,
+    method: "tools/list",
+    params: {},
+  });
+  const showMap = result.result.tools.find((tool) => tool.name === "show_map");
+  assert.ok(showMap, "show_map was not listed");
+  assert.equal(showMap._meta.ui.resourceUri, "ui://map-canvas/map-v2.html");
+  return result;
 });
-const showMap = listed.result.tools.find((tool) => tool.name === "show_map");
-assert.ok(showMap, "show_map was not listed");
-assert.equal(showMap._meta.ui.resourceUri, "ui://map-canvas/map-v2.html");
 
 const called = await callMcp({
   jsonrpc: "2.0",
@@ -96,19 +114,21 @@ const called = await callMcp({
 });
 assert.equal(called.result.structuredContent.places.length, 2);
 
-const resource = await callMcp({
-  jsonrpc: "2.0",
-  id: 4,
-  method: "resources/read",
-  params: { uri: "ui://map-canvas/map-v2.html" },
+await eventually(async () => {
+  const resource = await callMcp({
+    jsonrpc: "2.0",
+    id: 4,
+    method: "resources/read",
+    params: { uri: "ui://map-canvas/map-v2.html" },
+  });
+  const widget = resource.result.contents[0];
+  assert.equal(widget.mimeType, "text/html;profile=mcp-app");
+  assert.ok(widget.text.includes("OpenStreetMap"));
+  assert.ok(widget.text.length < 250_000, "Widget bundle is too large for mobile hosts");
+  assert.ok(!widget.text.includes("ResizeObserver"));
+  assert.deepEqual(widget._meta.ui.csp.resourceDomains, [
+    "https://tile.openstreetmap.org",
+  ]);
 });
-const widget = resource.result.contents[0];
-assert.equal(widget.mimeType, "text/html;profile=mcp-app");
-assert.ok(widget.text.includes("OpenStreetMap"));
-assert.ok(widget.text.length < 250_000, "Widget bundle is too large for mobile hosts");
-assert.ok(!widget.text.includes("ResizeObserver"));
-assert.deepEqual(widget._meta.ui.csp.resourceDomains, [
-  "https://tile.openstreetmap.org",
-]);
 
 console.log("Production smoke test passed: health, initialize, tools/list, tools/call, resources/read");
