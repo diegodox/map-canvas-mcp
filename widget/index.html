@@ -15,17 +15,6 @@
         <div class="header-actions">
           <button id="reset-view" class="toolbar-button" type="button">全体表示</button>
           <button
-            id="diagnostics"
-            class="toolbar-button diagnostics-button"
-            type="button"
-            aria-expanded="false"
-            aria-controls="diagnostics-panel"
-            title="実行時診断"
-          >
-            <span aria-hidden="true">診</span>
-            <span class="diagnostics-label">診断</span>
-          </button>
-          <button
             id="display-mode"
             class="toolbar-button display-mode-button"
             type="button"
@@ -40,29 +29,6 @@
           <span id="count" class="count"></span>
         </div>
       </header>
-      <section
-        id="diagnostics-panel"
-        class="diagnostics-panel"
-        aria-labelledby="diagnostics-title"
-        hidden
-      >
-        <div class="diagnostics-heading">
-          <div>
-            <strong id="diagnostics-title">実行時診断</strong>
-            <span id="diagnostics-status">待機中</span>
-          </div>
-          <button id="diagnostics-close" class="diagnostics-close" type="button" aria-label="閉じる">×</button>
-        </div>
-        <p>
-          最大化前後のデータ配送、表示モード、要素サイズ、Leaflet状態、例外を記録します。
-          地点名や座標は送信しません。
-        </p>
-        <pre id="diagnostics-log" class="diagnostics-log">診断イベントはまだありません。</pre>
-        <div class="diagnostics-actions">
-          <button id="diagnostics-fullscreen" class="diagnostics-primary" type="button">最大化を診断</button>
-          <button id="diagnostics-send" class="diagnostics-secondary" type="button">現在の結果を送信</button>
-        </div>
-      </section>
       <nav id="days" class="days" aria-label="日別表示" hidden></nav>
       <div class="content">
         <section class="map-frame">
