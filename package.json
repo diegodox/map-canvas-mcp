@@ -10,6 +10,7 @@
     "dev": "npm run build:widget && wrangler dev",
     "deploy": "npm run build:widget && wrangler deploy",
     "test": "npm run build:widget && node scripts/smoke-test.mjs",
+    "test:production": "node scripts/remote-smoke-test.mjs",
     "types": "wrangler types"
   },
   "dependencies": {
@@ -28,6 +29,6 @@
     "wrangler": "^4.124.0"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   }
 }
