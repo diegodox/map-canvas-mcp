@@ -177,7 +177,7 @@ const widgetMeta = {
 function createServer(): McpServer {
   const server = new McpServer({
     name: "map-canvas-mcp",
-    version: "0.6.0",
+    version: "0.6.1",
   });
 
   server.registerResource("map-canvas-widget", WIDGET_URI, {}, async () => ({
