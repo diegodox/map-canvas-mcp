@@ -638,15 +638,27 @@ type DisplayMode = "inline" | "fullscreen" | "pip";
 
 type DisplayModeResult = { mode?: DisplayMode } | undefined;
 
+type OpenAIGlobals = {
+  toolOutput?: unknown;
+  toolInput?: unknown;
+  displayMode?: DisplayMode;
+};
+
 type OpenAICompatibility = Window & {
-  openai?: {
-    toolOutput?: unknown;
-    toolInput?: unknown;
-    displayMode?: DisplayMode;
+  openai?: OpenAIGlobals & {
     requestDisplayMode?: (options: { mode: DisplayMode }) => Promise<DisplayModeResult>;
     openExternal?: (options: { href: string; redirectUrl?: boolean }) => Promise<unknown>;
   };
 };
+
+function refreshMapLayout(): void {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      map?.invalidateSize();
+      fitCurrentView();
+    });
+  });
+}
 
 function syncDisplayMode(mode: DisplayMode): void {
   currentDisplayMode = mode;
@@ -657,7 +669,7 @@ function syncDisplayMode(mode: DisplayMode): void {
   displayModeButton.title = isFullscreen ? "元の大きさに戻す" : "地図を最大化";
   displayModeButton.querySelector(".display-mode-icon")!.textContent = isFullscreen ? "⤡" : "⤢";
   displayModeButton.querySelector(".display-mode-label")!.textContent = isFullscreen ? "戻す" : "最大化";
-  requestAnimationFrame(() => map?.invalidateSize());
+  refreshMapLayout();
 }
 
 function refreshHostActions(): void {
@@ -671,6 +683,14 @@ function tryCompatibilityData(): void {
   if (hasRendered) return;
   const openai = (window as OpenAICompatibility).openai;
   renderCandidate(openai?.toolOutput) || renderCandidate(openai?.toolInput);
+}
+
+function applyHostGlobals(globals: OpenAIGlobals | undefined): void {
+  if (globals?.displayMode) syncDisplayMode(globals.displayMode);
+  if (!hasRendered) {
+    renderCandidate(globals?.toolOutput) || renderCandidate(globals?.toolInput);
+  }
+  if (hasRendered) refreshMapLayout();
 }
 
 resetButton.addEventListener("click", fitCurrentView);
@@ -690,16 +710,15 @@ displayModeButton.addEventListener("click", async () => {
 window.addEventListener(
   "openai:set_globals",
   (event) => {
-    const globals = (event as CustomEvent<{ globals?: { displayMode?: DisplayMode } }>).detail
-      ?.globals;
-    if (globals?.displayMode) syncDisplayMode(globals.displayMode);
+    const globals = (event as CustomEvent<{ globals?: OpenAIGlobals }>).detail?.globals;
+    applyHostGlobals(globals ?? (window as OpenAICompatibility).openai);
   },
   { passive: true },
 );
 
 void request("ui/initialize", {
   appCapabilities: {},
-  appInfo: { name: "Map Canvas", version: "0.4.0" },
+  appInfo: { name: "Map Canvas", version: "0.4.1" },
   protocolVersion: "2026-01-26",
 })
   .then(() => {

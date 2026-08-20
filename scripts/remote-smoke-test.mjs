@@ -92,7 +92,7 @@ const listed = await eventually(async () => {
   });
   const showMap = result.result.tools.find((tool) => tool.name === "show_map");
   assert.ok(showMap, "show_map was not listed");
-  assert.equal(showMap._meta.ui.resourceUri, "ui://map-canvas/map-v4.html");
+  assert.equal(showMap._meta.ui.resourceUri, "ui://map-canvas/map-v5.html");
   assert.ok(showMap.inputSchema.properties.routes);
   return result;
 });
@@ -146,7 +146,7 @@ await eventually(async () => {
     jsonrpc: "2.0",
     id: 4,
     method: "resources/read",
-    params: { uri: "ui://map-canvas/map-v4.html" },
+    params: { uri: "ui://map-canvas/map-v5.html" },
   });
   const widget = resource.result.contents[0];
   assert.equal(widget.mimeType, "text/html;profile=mcp-app");
