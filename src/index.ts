@@ -157,6 +157,7 @@ const mapSchema = z.object(mapSchemaShape).superRefine((map, context) => {
 const widgetMeta = {
   ui: {
     prefersBorder: true,
+    domain: WIDGET_ASSET_ORIGIN,
     csp: {
       connectDomains: [],
       resourceDomains: [...TILE_DOMAINS, WIDGET_ASSET_ORIGIN],
@@ -165,6 +166,7 @@ const widgetMeta = {
   "openai/widgetDescription":
     "Interactive travel map with an itinerary, day filters, status, transport legs, and navigation links.",
   "openai/widgetPrefersBorder": true,
+  "openai/widgetDomain": WIDGET_ASSET_ORIGIN,
   "openai/widgetCSP": {
     connect_domains: [],
     resource_domains: [...TILE_DOMAINS, WIDGET_ASSET_ORIGIN],
@@ -175,7 +177,7 @@ const widgetMeta = {
 function createServer(): McpServer {
   const server = new McpServer({
     name: "map-canvas-mcp",
-    version: "0.5.0",
+    version: "0.5.1",
   });
 
   server.registerResource("map-canvas-widget", WIDGET_URI, {}, async () => ({
