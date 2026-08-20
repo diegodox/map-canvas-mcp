@@ -38,6 +38,17 @@ https://map-canvas.<account-subdomain>.workers.dev/mcp
 No API key is required. Do not add secrets to source or `wrangler.jsonc`; use
 Cloudflare secrets if authentication is added later.
 
+### Deploy with GitHub Actions
+
+The included workflow deploys on every push to `main` and can also be run
+manually from the Actions tab. Add these repository Actions secrets first:
+
+- `CLOUDFLARE_API_TOKEN`: a token scoped to edit Workers in the target account
+- `CLOUDFLARE_ACCOUNT_ID`: the target Cloudflare account ID
+
+The values stay in GitHub Actions secrets and must not be committed to the
+repository.
+
 ## Tool
 
 `show_map` accepts 1–50 places with decimal latitude/longitude coordinates and
