@@ -37,3 +37,8 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy
+
+      - name: Verify production MCP
+        run: npm run test:production
+        env:
+          MCP_BASE_URL: https://map-canvas.android-mxdiego9.workers.dev
