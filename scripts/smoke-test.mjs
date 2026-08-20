@@ -86,7 +86,7 @@ try {
   });
   const showMap = listed.result.tools.find((tool) => tool.name === "show_map");
   assert.ok(showMap, "show_map was not listed");
-  assert.equal(showMap._meta.ui.resourceUri, "ui://map-canvas/map-v3.html");
+  assert.equal(showMap._meta.ui.resourceUri, "ui://map-canvas/map-v4.html");
   assert.ok(showMap.inputSchema.properties.routes);
   assert.ok(showMap.inputSchema.properties.places.items.properties.day);
 
@@ -159,13 +159,17 @@ try {
     jsonrpc: "2.0",
     id: 5,
     method: "resources/read",
-    params: { uri: "ui://map-canvas/map-v3.html" },
+    params: { uri: "ui://map-canvas/map-v4.html" },
   });
   const widget = resource.result.contents[0];
   assert.equal(widget.mimeType, "text/html;profile=mcp-app");
   assert.ok(widget.text.includes("OpenStreetMap"));
   assert.ok(widget.text.includes("日別表示"));
   assert.ok(widget.text.includes("popup-link"));
+  assert.ok(widget.text.includes("display-mode"));
+  assert.ok(widget.text.includes("scroll-snap-type:x mandatory"));
+  assert.ok(widget.text.includes('requestDisplayMode({mode:'));
+  assert.ok(widget.text.includes('?"inline":"fullscreen"'));
   assert.ok(widget.text.length < 250_000, "Widget bundle is too large for mobile hosts");
   assert.ok(!widget.text.includes("ResizeObserver"));
   assert.deepEqual(widget._meta.ui.csp.resourceDomains, [
