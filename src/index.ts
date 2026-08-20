@@ -6,7 +6,7 @@ import widgetHtml from "../dist/map-widget.html";
 
 // Bump the URI whenever the embedded HTML changes so hosts do not reuse an old
 // cached iframe document.
-const WIDGET_URI = "ui://map-canvas/map-v4.html";
+const WIDGET_URI = "ui://map-canvas/map-v5.html";
 const TILE_DOMAINS = ["https://tile.openstreetmap.org"] as const;
 const REDIRECT_DOMAINS = [
   "https://www.google.com",
@@ -169,7 +169,7 @@ const widgetMeta = {
 function createServer(): McpServer {
   const server = new McpServer({
     name: "map-canvas-mcp",
-    version: "0.4.0",
+    version: "0.4.1",
   });
 
   server.registerResource("map-canvas-widget", WIDGET_URI, {}, async () => ({
