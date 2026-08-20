@@ -94,7 +94,7 @@ const listElement = requiredElement("places");
 const loadingElement = requiredElement("loading");
 const daysElement = requiredElement("days");
 const resetButton = requiredButton("reset-view");
-const fullscreenButton = requiredButton("fullscreen");
+const displayModeButton = requiredButton("display-mode");
 const routeNoteElement = requiredElement("route-note");
 
 let map: LeafletMap | undefined;
@@ -103,6 +103,8 @@ let currentData: MapData | undefined;
 let selectedDay = "all";
 let currentEntries: PlaceEntry[] = [];
 let hasRendered = false;
+let currentDisplayMode: DisplayMode = "inline";
+let carouselTimer: number | undefined;
 
 function requiredElement(id: string): HTMLElement {
   const element = document.getElementById(id);
@@ -295,6 +297,7 @@ function renderList(data: MapData, markers: Map<string, L.Marker>, entries: Plac
     const button = document.createElement("button");
     button.type = "button";
     button.className = "place-button";
+    button.style.setProperty("--marker-color", CATEGORY_COLOR[place.category]);
     button.setAttribute("aria-label", `${index + 1}. ${place.label}を地図で表示`);
 
     const number = document.createElement("span");
@@ -332,10 +335,7 @@ function renderList(data: MapData, markers: Map<string, L.Marker>, entries: Plac
     open.textContent = "›";
     button.append(number, copy, open);
     button.addEventListener("click", () => {
-      listElement.querySelectorAll(".place-button.active").forEach((element) => {
-        element.classList.remove("active");
-      });
-      button.classList.add("active");
+      setActivePlace(place.id);
       map?.flyTo([place.lat, place.lng], Math.max(map.getZoom(), 15), { duration: 0.45 });
       markers.get(place.id)?.openPopup();
     });
@@ -345,6 +345,38 @@ function renderList(data: MapData, markers: Map<string, L.Marker>, entries: Plac
     if (route) item.append(routeLegElement(route));
     listElement.append(item);
   });
+
+  listElement.onscroll = () => {
+    window.clearTimeout(carouselTimer);
+    carouselTimer = window.setTimeout(() => {
+      if (!window.matchMedia("(max-width: 680px)").matches) return;
+      const listRect = listElement.getBoundingClientRect();
+      const center = listRect.left + listRect.width / 2;
+      const cards = [...listElement.querySelectorAll<HTMLElement>(":scope > li[data-place-id]")];
+      const nearest = cards.reduce<HTMLElement | undefined>((best, card) => {
+        if (!best) return card;
+        const cardCenter = card.getBoundingClientRect().left + card.getBoundingClientRect().width / 2;
+        const bestCenter = best.getBoundingClientRect().left + best.getBoundingClientRect().width / 2;
+        return Math.abs(cardCenter - center) < Math.abs(bestCenter - center) ? card : best;
+      }, undefined);
+      const placeId = nearest?.dataset.placeId;
+      const entry = entries.find(({ place }) => place.id === placeId);
+      if (!entry) return;
+      setActivePlace(entry.place.id);
+      map?.panTo([entry.place.lat, entry.place.lng], { animate: true, duration: 0.35 });
+    }, 110);
+  };
+}
+
+function setActivePlace(placeId: string, scrollCard = false): void {
+  listElement.querySelectorAll(".place-button.active").forEach((element) => {
+    element.classList.remove("active");
+  });
+  const item = listElement.querySelector<HTMLElement>(
+    `[data-place-id="${CSS.escape(placeId)}"]`,
+  );
+  item?.querySelector(".place-button")?.classList.add("active");
+  if (scrollCard) item?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
 }
 
 function routeLegElement(route: Route): HTMLElement {
@@ -455,10 +487,7 @@ function renderMapView(data: MapData): void {
       .bindPopup(popupFor(entries), { closeButton: false, maxWidth: 260 })
       .addTo(renderedLayers);
     marker.on("click", () => {
-      const firstButton = listElement.querySelector<HTMLElement>(
-        `[data-place-id="${CSS.escape(first.id)}"] .place-button`,
-      );
-      firstButton?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      setActivePlace(first.id, true);
     });
     for (const { place } of entries) markers.set(place.id, marker);
   }
@@ -605,18 +634,36 @@ window.addEventListener(
   { passive: true },
 );
 
+type DisplayMode = "inline" | "fullscreen" | "pip";
+
+type DisplayModeResult = { mode?: DisplayMode } | undefined;
+
 type OpenAICompatibility = Window & {
   openai?: {
     toolOutput?: unknown;
     toolInput?: unknown;
-    requestDisplayMode?: (options: { mode: "fullscreen" }) => Promise<unknown>;
+    displayMode?: DisplayMode;
+    requestDisplayMode?: (options: { mode: DisplayMode }) => Promise<DisplayModeResult>;
     openExternal?: (options: { href: string; redirectUrl?: boolean }) => Promise<unknown>;
   };
 };
 
+function syncDisplayMode(mode: DisplayMode): void {
+  currentDisplayMode = mode;
+  const isFullscreen = mode === "fullscreen";
+  document.querySelector(".shell")?.setAttribute("data-display-mode", mode);
+  displayModeButton.setAttribute("aria-pressed", String(isFullscreen));
+  displayModeButton.setAttribute("aria-label", isFullscreen ? "地図を元の大きさに戻す" : "地図を最大化");
+  displayModeButton.title = isFullscreen ? "元の大きさに戻す" : "地図を最大化";
+  displayModeButton.querySelector(".display-mode-icon")!.textContent = isFullscreen ? "⤡" : "⤢";
+  displayModeButton.querySelector(".display-mode-label")!.textContent = isFullscreen ? "戻す" : "最大化";
+  requestAnimationFrame(() => map?.invalidateSize());
+}
+
 function refreshHostActions(): void {
   const openai = (window as OpenAICompatibility).openai;
-  fullscreenButton.hidden = !openai?.requestDisplayMode;
+  displayModeButton.hidden = !openai?.requestDisplayMode;
+  syncDisplayMode(openai?.displayMode ?? currentDisplayMode);
 }
 
 function tryCompatibilityData(): void {
@@ -627,14 +674,32 @@ function tryCompatibilityData(): void {
 }
 
 resetButton.addEventListener("click", fitCurrentView);
-fullscreenButton.addEventListener("click", () => {
+displayModeButton.addEventListener("click", async () => {
   const openai = (window as OpenAICompatibility).openai;
-  if (openai?.requestDisplayMode) void openai.requestDisplayMode({ mode: "fullscreen" });
+  if (!openai?.requestDisplayMode) return;
+  const targetMode: DisplayMode = currentDisplayMode === "fullscreen" ? "inline" : "fullscreen";
+  displayModeButton.disabled = true;
+  try {
+    const result = await openai.requestDisplayMode({ mode: targetMode });
+    syncDisplayMode(result?.mode ?? openai.displayMode ?? targetMode);
+  } finally {
+    displayModeButton.disabled = false;
+  }
 });
+
+window.addEventListener(
+  "openai:set_globals",
+  (event) => {
+    const globals = (event as CustomEvent<{ globals?: { displayMode?: DisplayMode } }>).detail
+      ?.globals;
+    if (globals?.displayMode) syncDisplayMode(globals.displayMode);
+  },
+  { passive: true },
+);
 
 void request("ui/initialize", {
   appCapabilities: {},
-  appInfo: { name: "Map Canvas", version: "0.3.0" },
+  appInfo: { name: "Map Canvas", version: "0.4.0" },
   protocolVersion: "2026-01-26",
 })
   .then(() => {
