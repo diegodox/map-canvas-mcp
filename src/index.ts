@@ -4,12 +4,10 @@ import { z } from "zod";
 
 import widgetHtml from "../dist/map-widget.html";
 
-const WIDGET_URI = "ui://map-canvas/map-v1.html";
-const TILE_DOMAINS = [
-  "https://a.tile.openstreetmap.org",
-  "https://b.tile.openstreetmap.org",
-  "https://c.tile.openstreetmap.org",
-] as const;
+// Bump the URI whenever the embedded HTML changes so hosts do not reuse an old
+// cached iframe document.
+const WIDGET_URI = "ui://map-canvas/map-v2.html";
+const TILE_DOMAINS = ["https://tile.openstreetmap.org"] as const;
 
 const coordinateSchema = z.object({
   lat: z.number().min(-90).max(90).describe("Latitude in decimal degrees."),
@@ -69,7 +67,7 @@ const widgetMeta = {
 function createServer(): McpServer {
   const server = new McpServer({
     name: "map-canvas-mcp",
-    version: "0.1.0",
+    version: "0.2.0",
   });
 
   server.registerResource("map-canvas-widget", WIDGET_URI, {}, async () => ({
