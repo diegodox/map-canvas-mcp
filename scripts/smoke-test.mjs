@@ -162,16 +162,11 @@ try {
   assert.ok(widgetRuntime.includes('?"inline":"fullscreen"'));
   assert.ok(widgetRuntime.includes("toolOutput"));
   assert.ok(widgetRuntime.includes("openai:set_globals"));
-  assert.ok(widgetRuntime.includes("openai:set_globals.view.params"));
-  assert.ok(widgetRuntime.includes("viewParamsValid"));
-  assert.ok(widgetRuntime.includes("viewSummary"));
   assert.ok(widgetRuntime.includes("requestAnimationFrame(()=>{requestAnimationFrame"));
-  assert.ok(widgetRuntime.includes("sendFollowUpMessage"));
-  assert.ok(widgetRuntime.includes("setWidgetState"));
-  assert.ok(widgetRuntime.includes("widgetStatePersistError"));
-  assert.ok(widgetRuntime.includes("snapshotError"));
-  assert.ok(widgetRuntime.includes("slice(-16)"));
-  assert.ok(widgetRuntime.includes("最大化を診断"));
+  assert.ok(widgetRuntime.includes("safe-area-inset-right) + 104px"));
+  assert.ok(!widgetRuntime.includes("sendFollowUpMessage"));
+  assert.ok(!widgetRuntime.includes("map-canvas-runtime-diagnostics"));
+  assert.ok(!widgetRuntime.includes("最大化を診断"));
   assert.ok(widgetRuntime.length < 250_000, "Widget bundle is too large for mobile hosts");
   assert.ok(!widgetRuntime.includes("ResizeObserver"));
 
