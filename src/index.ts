@@ -10,9 +10,18 @@ import {
   WIDGET_FALLBACK_ASSET_URL,
 } from "./generated-widget-build";
 
-// This URI identifies the stable loader. UI releases are selected per tool
-// result through _meta, so the loader can remain cached across deployments.
+// UI releases are selected per tool result through _meta. Keep every published
+// loader URI available so existing conversations can continue to resolve the
+// resource without refreshing the plugin or starting a new chat.
 const WIDGET_URI = "ui://map-canvas/map-v7.html";
+const LEGACY_WIDGET_URIS = [
+  "ui://map-canvas/map-v1.html",
+  "ui://map-canvas/map-v2.html",
+  "ui://map-canvas/map-v3.html",
+  "ui://map-canvas/map-v4.html",
+  "ui://map-canvas/map-v5.html",
+  "ui://map-canvas/map-v6.html",
+] as const;
 const TILE_DOMAINS = ["https://tile.openstreetmap.org"] as const;
 const REDIRECT_DOMAINS = [
   "https://www.google.com",
@@ -177,19 +186,26 @@ const widgetMeta = {
 function createServer(): McpServer {
   const server = new McpServer({
     name: "map-canvas-mcp",
-    version: "0.6.4",
+    version: "0.6.5",
   });
 
-  server.registerResource("map-canvas-widget", WIDGET_URI, {}, async () => ({
-    contents: [
-      {
-        uri: WIDGET_URI,
-        mimeType: "text/html;profile=mcp-app",
-        text: widgetHtml,
-        _meta: widgetMeta,
-      },
-    ],
-  }));
+  for (const [index, uri] of [...LEGACY_WIDGET_URIS, WIDGET_URI].entries()) {
+    server.registerResource(
+      uri === WIDGET_URI ? "map-canvas-widget" : `map-canvas-widget-legacy-v${index + 1}`,
+      uri,
+      {},
+      async () => ({
+        contents: [
+          {
+            uri,
+            mimeType: "text/html;profile=mcp-app",
+            text: widgetHtml,
+            _meta: widgetMeta,
+          },
+        ],
+      }),
+    );
+  }
 
   server.registerTool(
     "show_map",

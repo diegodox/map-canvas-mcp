@@ -759,7 +759,7 @@ if (bootstrapToolResult !== undefined) {
 
 void request("ui/initialize", {
   appCapabilities: {},
-  appInfo: { name: "Map Canvas", version: "0.6.4" },
+  appInfo: { name: "Map Canvas", version: "0.6.5" },
   protocolVersion: "2026-01-26",
 })
   .then(() => {

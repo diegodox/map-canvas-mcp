@@ -11,6 +11,10 @@ const root = path.resolve(import.meta.dirname, "..");
 const outputDirectory = await mkdtemp(path.join(tmpdir(), "map-canvas-mcp-"));
 const outputFile = path.join(outputDirectory, "worker.mjs");
 const protocolVersion = "2025-06-18";
+const widgetUris = Array.from(
+  { length: 7 },
+  (_, index) => `ui://map-canvas/map-v${index + 1}.html`,
+);
 
 function parseMcpResponse(response, body) {
   const contentType = response.headers.get("content-type") ?? "";
@@ -234,13 +238,21 @@ try {
   assert.equal(backwardCompatible.result.structuredContent.connectPlaces, true);
   assert.deepEqual(backwardCompatible.result.structuredContent.routes, []);
 
-  const resource = await callMcp(worker, {
-    jsonrpc: "2.0",
-    id: 5,
-    method: "resources/read",
-    params: { uri: "ui://map-canvas/map-v7.html" },
-  });
-  const widget = resource.result.contents[0];
+  let widget;
+  for (const [index, uri] of widgetUris.entries()) {
+    const resource = await callMcp(worker, {
+      jsonrpc: "2.0",
+      id: 5 + index,
+      method: "resources/read",
+      params: { uri },
+    });
+    const resourceWidget = resource.result.contents[0];
+    assert.equal(resourceWidget.uri, uri);
+    assert.equal(resourceWidget.mimeType, "text/html;profile=mcp-app");
+    assert.equal(resourceWidget.text, widget?.text ?? resourceWidget.text);
+    widget = resourceWidget;
+  }
+  assert.ok(widget, "Current widget resource was not returned");
   assert.equal(widget.mimeType, "text/html;profile=mcp-app");
   assert.ok(widget.text.includes("mapCanvas/widgetAsset"));
   assert.ok(widget.text.includes("ui/notifications/tool-result"));
