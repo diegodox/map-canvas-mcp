@@ -92,7 +92,7 @@ const listed = await eventually(async () => {
   });
   const showMap = result.result.tools.find((tool) => tool.name === "show_map");
   assert.ok(showMap, "show_map was not listed");
-  assert.equal(showMap._meta.ui.resourceUri, "ui://map-canvas/map-v6.html");
+  assert.equal(showMap._meta.ui.resourceUri, "ui://map-canvas/map-v7.html");
   assert.ok(showMap.inputSchema.properties.routes);
   return result;
 });
@@ -157,6 +157,9 @@ const widgetRuntime = await assetResponse.text();
 assert.ok(widgetRuntime.includes("OpenStreetMap"));
 assert.ok(widgetRuntime.includes("日別表示"));
 assert.ok(widgetRuntime.includes("popup-link"));
+assert.ok(widgetRuntime.includes("toolResponseMetadata"));
+assert.ok(widgetRuntime.includes("mcp_tool_result"));
+assert.ok(widgetRuntime.includes("ui/notifications/tool-input"));
 assert.ok(widgetRuntime.includes("safe-area-inset-right) + 104px"));
 assert.ok(!widgetRuntime.includes("sendFollowUpMessage"));
 assert.ok(!widgetRuntime.includes("map-canvas-runtime-diagnostics"));
@@ -172,7 +175,7 @@ await eventually(async () => {
     jsonrpc: "2.0",
     id: 4,
     method: "resources/read",
-    params: { uri: "ui://map-canvas/map-v6.html" },
+    params: { uri: "ui://map-canvas/map-v7.html" },
   });
   const widget = resource.result.contents[0];
   assert.equal(widget.mimeType, "text/html;profile=mcp-app");

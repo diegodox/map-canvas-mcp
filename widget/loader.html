@@ -72,9 +72,10 @@
         if (!globals || typeof globals !== "object") return false;
         const asset = assetFromMetadata(globals.toolResponseMetadata);
         if (!asset) return false;
-        const initialToolResult = globals.toolOutput === undefined
-          ? undefined
-          : { structuredContent: globals.toolOutput, _meta: globals.toolResponseMetadata };
+        const initialToolResult = {
+          structuredContent: globals.toolOutput,
+          _meta: globals.toolResponseMetadata,
+        };
         void loadWidget(asset, initialToolResult);
         return true;
       }

@@ -47,6 +47,39 @@ async function callMcp(worker, message) {
 }
 
 try {
+  const hostDataOutput = path.join(outputDirectory, "host-data.mjs");
+  await build({
+    absWorkingDir: root,
+    entryPoints: ["widget/host-data.ts"],
+    outfile: hostDataOutput,
+    bundle: true,
+    format: "esm",
+    platform: "node",
+    logLevel: "silent",
+  });
+  const { findHostData } = await import(pathToFileURL(hostDataOutput));
+  const mapData = { title: "Recovered map", places: [{ id: "tokyo" }] };
+  const parseMapData = (candidate) => candidate === mapData ? candidate : undefined;
+  assert.equal(findHostData(mapData, parseMapData), mapData);
+  assert.equal(
+    findHostData(
+      { toolResponseMetadata: { mcp_tool_result: { structuredContent: mapData } } },
+      parseMapData,
+    ),
+    mapData,
+  );
+  assert.equal(
+    findHostData(
+      { _meta: { call_tool_result: { result: { structured_content: mapData } } } },
+      parseMapData,
+    ),
+    mapData,
+  );
+  assert.equal(findHostData({ params: { arguments: mapData } }, parseMapData), mapData);
+  const cyclicEnvelope = {};
+  cyclicEnvelope.result = cyclicEnvelope;
+  assert.equal(findHostData(cyclicEnvelope, parseMapData), undefined);
+
   await build({
     absWorkingDir: root,
     entryPoints: ["src/index.ts"],
@@ -87,7 +120,7 @@ try {
   });
   const showMap = listed.result.tools.find((tool) => tool.name === "show_map");
   assert.ok(showMap, "show_map was not listed");
-  assert.equal(showMap._meta.ui.resourceUri, "ui://map-canvas/map-v6.html");
+  assert.equal(showMap._meta.ui.resourceUri, "ui://map-canvas/map-v7.html");
   assert.ok(showMap.inputSchema.properties.routes);
   assert.ok(showMap.inputSchema.properties.places.items.properties.day);
 
@@ -161,6 +194,9 @@ try {
   assert.ok(widgetRuntime.includes('requestDisplayMode({mode:'));
   assert.ok(widgetRuntime.includes('?"inline":"fullscreen"'));
   assert.ok(widgetRuntime.includes("toolOutput"));
+  assert.ok(widgetRuntime.includes("toolResponseMetadata"));
+  assert.ok(widgetRuntime.includes("mcp_tool_result"));
+  assert.ok(widgetRuntime.includes("ui/notifications/tool-input"));
   assert.ok(widgetRuntime.includes("openai:set_globals"));
   assert.ok(widgetRuntime.includes("requestAnimationFrame(()=>{requestAnimationFrame"));
   assert.ok(widgetRuntime.includes("safe-area-inset-right) + 104px"));
@@ -202,12 +238,14 @@ try {
     jsonrpc: "2.0",
     id: 5,
     method: "resources/read",
-    params: { uri: "ui://map-canvas/map-v6.html" },
+    params: { uri: "ui://map-canvas/map-v7.html" },
   });
   const widget = resource.result.contents[0];
   assert.equal(widget.mimeType, "text/html;profile=mcp-app");
   assert.ok(widget.text.includes("mapCanvas/widgetAsset"));
   assert.ok(widget.text.includes("ui/notifications/tool-result"));
+  assert.ok(widget.text.includes("structuredContent: globals.toolOutput"));
+  assert.ok(widget.text.includes("_meta: globals.toolResponseMetadata"));
   assert.ok(widget.text.includes("import(primaryUrl)"));
   assert.ok(widget.text.includes("assets/current/map-widget.js"));
   assert.ok(widget.text.length < 10_000, "Stable widget loader should remain small");
