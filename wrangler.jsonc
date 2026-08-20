@@ -11,6 +11,11 @@
       "fallthrough": true
     }
   ],
+  "assets": {
+    "directory": "./dist/public",
+    "html_handling": "none",
+    "not_found_handling": "none"
+  },
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1

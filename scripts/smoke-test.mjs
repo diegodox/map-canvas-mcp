@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -86,7 +87,7 @@ try {
   });
   const showMap = listed.result.tools.find((tool) => tool.name === "show_map");
   assert.ok(showMap, "show_map was not listed");
-  assert.equal(showMap._meta.ui.resourceUri, "ui://map-canvas/map-v5.html");
+  assert.equal(showMap._meta.ui.resourceUri, "ui://map-canvas/map-v6.html");
   assert.ok(showMap.inputSchema.properties.routes);
   assert.ok(showMap.inputSchema.properties.places.items.properties.day);
 
@@ -135,6 +136,44 @@ try {
   assert.equal(called.result.structuredContent.places.length, 2);
   assert.equal(called.result.structuredContent.routes.length, 1);
   assert.equal(called.result.structuredContent.routes[0].mode, "rail");
+  const widgetAsset = called.result._meta?.["mapCanvas/widgetAsset"];
+  assert.ok(widgetAsset, "show_map did not return widget asset metadata");
+  assert.match(widgetAsset.version, /^[a-f0-9]{16}$/);
+  assert.equal(new URL(widgetAsset.url).origin, "https://map-canvas.android-mxdiego9.workers.dev");
+  assert.equal(
+    new URL(widgetAsset.url).pathname,
+    `/assets/v/${widgetAsset.version}/map-widget.js`,
+  );
+  assert.equal(
+    widgetAsset.fallbackUrl,
+    "https://map-canvas.android-mxdiego9.workers.dev/assets/current/map-widget.js",
+  );
+
+  const widgetAssetFile = path.join(root, "dist/public", new URL(widgetAsset.url).pathname);
+  const widgetRuntime = await readFile(widgetAssetFile, "utf8");
+  const runtimeDigest = createHash("sha256").update(widgetRuntime).digest("hex").slice(0, 16);
+  assert.equal(runtimeDigest, widgetAsset.version);
+  assert.ok(widgetRuntime.includes("OpenStreetMap"));
+  assert.ok(widgetRuntime.includes("日別表示"));
+  assert.ok(widgetRuntime.includes("popup-link"));
+  assert.ok(widgetRuntime.includes("display-mode"));
+  assert.ok(widgetRuntime.includes("scroll-snap-type:x mandatory"));
+  assert.ok(widgetRuntime.includes('requestDisplayMode({mode:'));
+  assert.ok(widgetRuntime.includes('?"inline":"fullscreen"'));
+  assert.ok(widgetRuntime.includes("toolOutput"));
+  assert.ok(widgetRuntime.includes("openai:set_globals"));
+  assert.ok(widgetRuntime.includes("requestAnimationFrame(()=>{requestAnimationFrame"));
+  assert.ok(widgetRuntime.length < 250_000, "Widget bundle is too large for mobile hosts");
+  assert.ok(!widgetRuntime.includes("ResizeObserver"));
+
+  const fallbackRuntime = await readFile(
+    path.join(root, "dist/public/assets/current/map-widget.js"),
+    "utf8",
+  );
+  assert.equal(fallbackRuntime, widgetRuntime);
+  const staticHeaders = await readFile(path.join(root, "dist/public/_headers"), "utf8");
+  assert.ok(staticHeaders.includes("max-age=31536000, immutable"));
+  assert.ok(staticHeaders.includes("no-cache, must-revalidate"));
 
   const backwardCompatible = await callMcp(worker, {
     jsonrpc: "2.0",
@@ -159,24 +198,19 @@ try {
     jsonrpc: "2.0",
     id: 5,
     method: "resources/read",
-    params: { uri: "ui://map-canvas/map-v5.html" },
+    params: { uri: "ui://map-canvas/map-v6.html" },
   });
   const widget = resource.result.contents[0];
   assert.equal(widget.mimeType, "text/html;profile=mcp-app");
-  assert.ok(widget.text.includes("OpenStreetMap"));
-  assert.ok(widget.text.includes("日別表示"));
-  assert.ok(widget.text.includes("popup-link"));
-  assert.ok(widget.text.includes("display-mode"));
-  assert.ok(widget.text.includes("scroll-snap-type:x mandatory"));
-  assert.ok(widget.text.includes('requestDisplayMode({mode:'));
-  assert.ok(widget.text.includes('?"inline":"fullscreen"'));
-  assert.ok(widget.text.includes('toolOutput'));
-  assert.ok(widget.text.includes('openai:set_globals'));
-  assert.ok(widget.text.includes('requestAnimationFrame(()=>{requestAnimationFrame'));
-  assert.ok(widget.text.length < 250_000, "Widget bundle is too large for mobile hosts");
-  assert.ok(!widget.text.includes("ResizeObserver"));
+  assert.ok(widget.text.includes("mapCanvas/widgetAsset"));
+  assert.ok(widget.text.includes("ui/notifications/tool-result"));
+  assert.ok(widget.text.includes("import(primaryUrl)"));
+  assert.ok(widget.text.includes("assets/current/map-widget.js"));
+  assert.ok(widget.text.length < 10_000, "Stable widget loader should remain small");
+  assert.ok(!widget.text.includes("OpenStreetMap"));
   assert.deepEqual(widget._meta.ui.csp.resourceDomains, [
     "https://tile.openstreetmap.org",
+    "https://map-canvas.android-mxdiego9.workers.dev",
   ]);
   assert.deepEqual(widget._meta["openai/widgetCSP"].redirect_domains, [
     "https://www.google.com",

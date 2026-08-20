@@ -1,8 +1,10 @@
 # Map Canvas MCP
 
 An embedded interactive map for MCP Apps hosts such as ChatGPT. The Worker
-returns map data and a bundled Leaflet UI; the user's browser fetches visible
-OpenStreetMap tiles directly from the standard tile servers.
+returns map data plus a stable UI loader. Each tool result selects a
+content-addressed Leaflet bundle served from Cloudflare Static Assets, so UI
+updates do not require refreshing unchanged tool metadata. The user's browser
+fetches visible OpenStreetMap tiles directly from the standard tile servers.
 
 ## Production endpoint
 

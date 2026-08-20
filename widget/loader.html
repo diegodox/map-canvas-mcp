@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Map Canvas</title>
+    <style>
+      :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+      body { margin: 0; }
+      #map-canvas-loader { display: grid; min-height: 180px; place-items: center; color: #64748b; font-size: 13px; }
+      #map-canvas-loader[data-error="true"] { color: #dc2626; }
+    </style>
+  </head>
+  <body>
+    <main id="map-canvas-loader" role="status">地図を読み込んでいます…</main>
+    <script type="module">
+      const ASSET_ORIGIN = "__MAP_CANVAS_ASSET_ORIGIN__";
+      const FALLBACK_ASSET_URL = `${ASSET_ORIGIN}/assets/current/map-widget.js`;
+      const ASSET_META_KEY = "mapCanvas/widgetAsset";
+      const loader = document.getElementById("map-canvas-loader");
+      const bootstrap = (window.__MAP_CANVAS_BOOTSTRAP__ ??= {});
+
+      function assetFromMetadata(metadata, depth = 0) {
+        if (!metadata || typeof metadata !== "object") return undefined;
+        const asset = metadata[ASSET_META_KEY];
+        if (asset && typeof asset === "object" && typeof asset.url === "string") {
+          try {
+            const url = new URL(asset.url);
+            if (
+              url.origin === ASSET_ORIGIN &&
+              /^\/assets\/v\/[a-f0-9]{16}\/map-widget\.js$/.test(url.pathname)
+            ) {
+              return { ...asset, url: url.href };
+            }
+          } catch {
+            // Continue to nested compatibility metadata below.
+          }
+        }
+        if (depth >= 4) return undefined;
+        for (const value of Object.values(metadata).slice(0, 20)) {
+          const nested = assetFromMetadata(value, depth + 1);
+          if (nested) return nested;
+        }
+        return undefined;
+      }
+
+      function showLoadError(error) {
+        console.error("Map Canvas widget asset failed to load", error);
+        if (!loader) return;
+        loader.dataset.error = "true";
+        loader.textContent = "地図UIを読み込めませんでした。もう一度実行してください。";
+      }
+
+      function loadWidget(asset, initialToolResult) {
+        if (initialToolResult && !bootstrap.initialToolResult) {
+          bootstrap.initialToolResult = initialToolResult;
+        }
+        if (asset) bootstrap.asset = asset;
+        if (bootstrap.loading) return bootstrap.loading;
+        const primaryUrl = asset?.url ?? FALLBACK_ASSET_URL;
+        if (!asset) bootstrap.fallback = true;
+        bootstrap.loading = import(primaryUrl).catch((error) => {
+          if (primaryUrl === FALLBACK_ASSET_URL) throw error;
+          bootstrap.fallback = true;
+          return import(`${FALLBACK_ASSET_URL}?recovery=${Date.now()}`);
+        });
+        bootstrap.loading.catch(showLoadError);
+        return bootstrap.loading;
+      }
+
+      function loadFromGlobals(globals) {
+        if (!globals || typeof globals !== "object") return false;
+        const asset = assetFromMetadata(globals.toolResponseMetadata);
+        if (!asset) return false;
+        const initialToolResult = globals.toolOutput === undefined
+          ? undefined
+          : { structuredContent: globals.toolOutput, _meta: globals.toolResponseMetadata };
+        void loadWidget(asset, initialToolResult);
+        return true;
+      }
+
+      window.addEventListener("message", (event) => {
+        if (event.source !== window.parent) return;
+        const message = event.data;
+        if (!message || message.method !== "ui/notifications/tool-result") return;
+        const asset = assetFromMetadata(message.params?._meta);
+        if (asset) void loadWidget(asset, message.params);
+      }, { passive: true });
+
+      window.addEventListener("openai:set_globals", (event) => {
+        loadFromGlobals(event.detail?.globals ?? window.openai);
+      }, { passive: true });
+
+      if (!loadFromGlobals(window.openai)) {
+        window.setTimeout(() => {
+          if (!bootstrap.loading) void loadWidget(undefined, undefined);
+        }, 300);
+      }
+    </script>
+  </body>
+</html>

@@ -3,10 +3,16 @@ import { createMcpHandler } from "agents/mcp/server";
 import { z } from "zod";
 
 import widgetHtml from "../dist/map-widget.html";
+import {
+  WIDGET_ASSET_ORIGIN,
+  WIDGET_ASSET_URL,
+  WIDGET_ASSET_VERSION,
+  WIDGET_FALLBACK_ASSET_URL,
+} from "./generated-widget-build";
 
-// Bump the URI whenever the embedded HTML changes so hosts do not reuse an old
-// cached iframe document.
-const WIDGET_URI = "ui://map-canvas/map-v5.html";
+// This URI identifies the stable loader. UI releases are selected per tool
+// result through _meta, so the loader can remain cached across deployments.
+const WIDGET_URI = "ui://map-canvas/map-v6.html";
 const TILE_DOMAINS = ["https://tile.openstreetmap.org"] as const;
 const REDIRECT_DOMAINS = [
   "https://www.google.com",
@@ -153,7 +159,7 @@ const widgetMeta = {
     prefersBorder: true,
     csp: {
       connectDomains: [],
-      resourceDomains: [...TILE_DOMAINS],
+      resourceDomains: [...TILE_DOMAINS, WIDGET_ASSET_ORIGIN],
     },
   },
   "openai/widgetDescription":
@@ -161,7 +167,7 @@ const widgetMeta = {
   "openai/widgetPrefersBorder": true,
   "openai/widgetCSP": {
     connect_domains: [],
-    resource_domains: [...TILE_DOMAINS],
+    resource_domains: [...TILE_DOMAINS, WIDGET_ASSET_ORIGIN],
     redirect_domains: [...REDIRECT_DOMAINS],
   },
 } as const;
@@ -169,7 +175,7 @@ const widgetMeta = {
 function createServer(): McpServer {
   const server = new McpServer({
     name: "map-canvas-mcp",
-    version: "0.4.1",
+    version: "0.5.0",
   });
 
   server.registerResource("map-canvas-widget", WIDGET_URI, {}, async () => ({
@@ -215,6 +221,13 @@ function createServer(): McpServer {
             text: `${map.title}：${map.places.length}地点を地図に表示しました。`,
           },
         ],
+        _meta: {
+          "mapCanvas/widgetAsset": {
+            version: WIDGET_ASSET_VERSION,
+            url: WIDGET_ASSET_URL,
+            fallbackUrl: WIDGET_FALLBACK_ASSET_URL,
+          },
+        },
       };
     },
   );

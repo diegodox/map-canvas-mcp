@@ -1,8 +1,11 @@
 {
   "name": "map-canvas-mcp",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
+  "mapCanvas": {
+    "publicBaseUrl": "https://map-canvas.android-mxdiego9.workers.dev"
+  },
   "scripts": {
     "build:widget": "node scripts/build-widget.mjs",
     "build": "npm run build:widget && wrangler deploy --dry-run",
