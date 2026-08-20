@@ -627,6 +627,21 @@ function renderCandidate(value: unknown, source = "unknown"): boolean {
   return true;
 }
 
+function viewParams(value: unknown): unknown {
+  return isRecord(value) ? value.params : undefined;
+}
+
+function viewSummary(value: unknown): DiagnosticDetail | null {
+  if (!isRecord(value)) return null;
+  const params = viewParams(value);
+  return {
+    mode: typeof value.mode === "string" ? value.mode : null,
+    isTombstone: value.isTombstone === true,
+    paramsPresent: params !== undefined && params !== null,
+    paramsValid: Boolean(parseMapData(params)),
+  };
+}
+
 function receiveToolResult(params: unknown): void {
   recordDiagnostic("tool-result-notification", {
     paramsPresent: params !== undefined && params !== null,
@@ -784,7 +799,7 @@ function runtimeGeometry(): DiagnosticDetail {
       displayMode: openai?.displayMode ?? currentDisplayMode,
       maxHeight: openai?.maxHeight ?? null,
       safeArea: openai?.safeArea ?? null,
-      view: openai?.view ?? null,
+      viewSummary: viewSummary(openai?.view),
       theme: openai?.theme ?? null,
       innerWidth: window.innerWidth,
       innerHeight: window.innerHeight,
@@ -819,6 +834,8 @@ function runtimeGeometry(): DiagnosticDetail {
       toolOutputValid: Boolean(parseMapData(openai?.toolOutput)),
       toolInputPresent: openai?.toolInput !== undefined && openai?.toolInput !== null,
       toolInputValid: Boolean(parseMapData(openai?.toolInput)),
+      viewParamsPresent: viewParams(openai?.view) !== undefined && viewParams(openai?.view) !== null,
+      viewParamsValid: Boolean(parseMapData(viewParams(openai?.view))),
       widgetStatePresent: openai?.widgetState !== undefined && openai?.widgetState !== null,
       widgetStatePersistError: widgetStatePersistError ?? null,
       widgetSessionId: findWidgetSessionId(openai?.toolResponseMetadata) ?? null,
@@ -928,7 +945,7 @@ function restoreDiagnosticsFromHost(): void {
 function diagnosticReport(reason: string): DiagnosticDetail {
   return {
     diagnosticVersion: 1,
-    widgetVersion: "0.6.1",
+    widgetVersion: "0.6.2",
     resourceUri: "ui://map-canvas/map-v6.html",
     reason,
     instance: diagnosticInstance,
@@ -1026,7 +1043,8 @@ function tryCompatibilityData(): void {
   if (hasRendered) return;
   const openai = (window as OpenAICompatibility).openai;
   renderCandidate(openai?.toolOutput, "window.openai.toolOutput") ||
-    renderCandidate(openai?.toolInput, "window.openai.toolInput");
+    renderCandidate(openai?.toolInput, "window.openai.toolInput") ||
+    renderCandidate(viewParams(openai?.view), "window.openai.view.params");
 }
 
 function applyHostGlobals(globals: OpenAIGlobals | undefined): void {
@@ -1036,13 +1054,16 @@ function applyHostGlobals(globals: OpenAIGlobals | undefined): void {
     globalsKeys: globals ? Object.keys(globals).sort().slice(0, 40) : [],
     toolOutputPresent: globals?.toolOutput !== undefined && globals?.toolOutput !== null,
     toolInputPresent: globals?.toolInput !== undefined && globals?.toolInput !== null,
+    viewParamsPresent: viewParams(globals?.view) !== undefined && viewParams(globals?.view) !== null,
+    viewParamsValid: Boolean(parseMapData(viewParams(globals?.view))),
     displayMode: globals?.displayMode ?? null,
     maxHeight: globals?.maxHeight ?? null,
   });
   if (globals?.displayMode) syncDisplayMode(globals.displayMode);
   if (!hasRendered) {
     renderCandidate(globals?.toolOutput, "openai:set_globals.toolOutput") ||
-      renderCandidate(globals?.toolInput, "openai:set_globals.toolInput");
+      renderCandidate(globals?.toolInput, "openai:set_globals.toolInput") ||
+      renderCandidate(viewParams(globals?.view), "openai:set_globals.view.params");
   }
   if (hasRendered) refreshMapLayout();
 }
