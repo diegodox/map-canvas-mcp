@@ -5,6 +5,23 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+// zod/v4 barrel-exports translated error messages for ~50 locales
+// (`export * as locales from "../locales/index.js"`) purely as an opt-in
+// convenience for callers that want `z.config(locales.fr())`. Nothing here
+// (or in @modelcontextprotocol/ext-apps, which only calls `z.config({jitless})`)
+// reads it, but esbuild can't prove that on its own and bundles all ~200KB of
+// translations anyway. Stub the module out so only the English messages baked
+// into zod's core (used regardless of this export) ship.
+const stripZodLocales = {
+  name: "strip-zod-locales",
+  setup(pluginBuild) {
+    pluginBuild.onLoad({ filter: /[/\\]zod[/\\]v4[/\\]locales[/\\]index\.js$/ }, () => ({
+      contents: "export {};",
+      loader: "js",
+    }));
+  },
+};
+
 const result = await build({
   entryPoints: [path.join(root, "widget/src.ts")],
   bundle: true,
@@ -15,6 +32,7 @@ const result = await build({
   minify: true,
   write: false,
   outdir: "out",
+  plugins: [stripZodLocales],
 });
 
 const js = result.outputFiles.find((file) => file.path.endsWith(".js"));

@@ -179,7 +179,7 @@ try {
   // The official @modelcontextprotocol/ext-apps client (used for spec-compliant
   // Claude/ChatGPT compatibility) pulls in the MCP SDK's JSON-RPC schemas and zod,
   // so this is noticeably larger than a hand-rolled postMessage implementation.
-  assert.ok(widget.text.length < 900_000, "Widget bundle grew unexpectedly large");
+  assert.ok(widget.text.length < 500_000, "Widget bundle grew unexpectedly large");
   assert.equal(widget._meta.ui.prefersBorder, true);
   assert.deepEqual(widget._meta.ui.csp.resourceDomains, ["https://tile.openstreetmap.org"]);
   assert.ok(!("openai/widgetCSP" in widget._meta), "legacy openai/* meta should be gone");
