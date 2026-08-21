@@ -12,6 +12,21 @@ const RESOURCE_MIME_TYPE = "text/html;profile=mcp-app";
 const WIDGET_URI = "ui://map-canvas/view.html";
 const TILE_DOMAINS = ["https://tile.openstreetmap.org"] as const;
 
+// Claude gives each MCP App a stable sandbox origin ("_meta.ui.domain") by
+// hashing the exact connector URL configured in Settings > Connectors:
+// https://claude.com/docs/connectors/building/mcp-apps/troubleshooting
+// The hash covers the full URL string (scheme, host, path, trailing slash),
+// so this must match README's documented production endpoint exactly.
+const MCP_SERVER_URL = "https://map-canvas.android-mxdiego9.workers.dev/mcp";
+
+async function computeClaudeWidgetDomain(mcpServerUrl: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(mcpServerUrl));
+  const hex = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 32)}.claudemcpcontent.com`;
+}
+
+const WIDGET_DOMAIN = await computeClaudeWidgetDomain(MCP_SERVER_URL);
+
 const coordinateSchema = z.object({
   lat: z.number().min(-90).max(90).describe("Latitude in decimal degrees."),
   lng: z.number().min(-180).max(180).describe("Longitude in decimal degrees."),
@@ -167,6 +182,7 @@ function createServer(): McpServer {
           _meta: {
             ui: {
               prefersBorder: true,
+              domain: WIDGET_DOMAIN,
               csp: { resourceDomains: [...TILE_DOMAINS] },
             },
           },

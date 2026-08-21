@@ -183,6 +183,9 @@ try {
   assert.equal(widget._meta.ui.prefersBorder, true);
   assert.deepEqual(widget._meta.ui.csp.resourceDomains, ["https://tile.openstreetmap.org"]);
   assert.ok(!("openai/widgetCSP" in widget._meta), "legacy openai/* meta should be gone");
+  // Must match sha256("https://map-canvas.android-mxdiego9.workers.dev/mcp").slice(0,32)
+  // + ".claudemcpcontent.com" — see the comment on MCP_SERVER_URL in src/index.ts.
+  assert.equal(widget._meta.ui.domain, "6e5bc4cc72d320eb10de51309e06c7f3.claudemcpcontent.com");
 
   console.log("Smoke test passed: health, initialize, tools/list, tools/call, resources/read");
 } finally {

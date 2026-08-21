@@ -159,6 +159,7 @@ await eventually(async () => {
   assert.ok(widget.text.length < 500_000, "Widget bundle grew unexpectedly large");
   assert.equal(widget._meta.ui.prefersBorder, true);
   assert.deepEqual(widget._meta.ui.csp.resourceDomains, ["https://tile.openstreetmap.org"]);
+  assert.equal(widget._meta.ui.domain, "6e5bc4cc72d320eb10de51309e06c7f3.claudemcpcontent.com");
   return widget;
 });
 
