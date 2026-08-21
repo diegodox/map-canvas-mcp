@@ -5,6 +5,7 @@ assert.ok(baseUrl, "MCP_BASE_URL is required");
 
 const endpoint = new URL("/mcp", baseUrl);
 const protocolVersion = "2025-06-18";
+const widgetUri = "ui://map-canvas/view.html";
 
 function parseMcpResponse(response, body) {
   const contentType = response.headers.get("content-type") ?? "";
@@ -83,7 +84,7 @@ const initialized = await callMcp({
 });
 assert.equal(initialized.result.protocolVersion, protocolVersion);
 
-const listed = await eventually(async () => {
+await eventually(async () => {
   const result = await callMcp({
     jsonrpc: "2.0",
     id: 2,
@@ -92,7 +93,7 @@ const listed = await eventually(async () => {
   });
   const showMap = result.result.tools.find((tool) => tool.name === "show_map");
   assert.ok(showMap, "show_map was not listed");
-  assert.equal(showMap._meta.ui.resourceUri, "ui://map-canvas/map-v7.html");
+  assert.equal(showMap._meta.ui.resourceUri, widgetUri);
   assert.ok(showMap.inputSchema.properties.routes);
   return result;
 });
@@ -140,74 +141,25 @@ const called = await callMcp({
 });
 assert.equal(called.result.structuredContent.places.length, 2);
 assert.equal(called.result.structuredContent.routes.length, 1);
-const widgetAsset = called.result._meta?.["mapCanvas/widgetAsset"];
-assert.ok(widgetAsset, "show_map did not return widget asset metadata");
-assert.match(widgetAsset.version, /^[a-f0-9]{16}$/);
-assert.equal(new URL(widgetAsset.url).origin, new URL(baseUrl).origin);
-assert.equal(
-  new URL(widgetAsset.url).pathname,
-  `/assets/v/${widgetAsset.version}/map-widget.js`,
-);
 
 await eventually(async () => {
-  const assetResponse = await fetchWithRetry(widgetAsset.url);
-  assert.equal(assetResponse.headers.get("access-control-allow-origin"), "*");
-  assert.match(assetResponse.headers.get("cache-control") ?? "", /max-age=31536000/);
-  assert.match(assetResponse.headers.get("cache-control") ?? "", /immutable/);
-  const runtime = await assetResponse.text();
-  assert.ok(runtime.includes("OpenStreetMap"));
-  assert.ok(runtime.includes("日別表示"));
-  assert.ok(runtime.includes("popup-link"));
-  assert.ok(runtime.includes("toolResponseMetadata"));
-  assert.ok(runtime.includes("mcp_tool_result"));
-  assert.ok(runtime.includes("ui/notifications/tool-input"));
-  assert.ok(runtime.includes("safe-area-inset-right) + 104px"));
-  assert.ok(!runtime.includes("sendFollowUpMessage"));
-  assert.ok(!runtime.includes("map-canvas-runtime-diagnostics"));
-  assert.ok(!runtime.includes("最大化を診断"));
-  assert.ok(runtime.length < 250_000, "Widget bundle is too large for mobile hosts");
-  return runtime;
-});
-
-const fallbackResponse = await fetchWithRetry(widgetAsset.fallbackUrl);
-assert.equal(fallbackResponse.headers.get("access-control-allow-origin"), "*");
-assert.match(fallbackResponse.headers.get("cache-control") ?? "", /no-cache/);
-
-await eventually(async () => {
-  const widgets = [];
-  for (const [index, uri] of [
-    "ui://map-canvas/map-v6.html",
-    "ui://map-canvas/map-v7.html",
-  ].entries()) {
-    const resource = await callMcp({
-      jsonrpc: "2.0",
-      id: 4 + index,
-      method: "resources/read",
-      params: { uri },
-    });
-    const widget = resource.result.contents[0];
-    assert.equal(widget.uri, uri);
-    widgets.push(widget);
-  }
-  const widget = widgets.at(-1);
-  assert.equal(widgets[0].text, widget.text);
+  const resource = await callMcp({
+    jsonrpc: "2.0",
+    id: 4,
+    method: "resources/read",
+    params: { uri: widgetUri },
+  });
+  const widget = resource.result.contents[0];
+  assert.equal(widget.uri, widgetUri);
   assert.equal(widget.mimeType, "text/html;profile=mcp-app");
-  assert.ok(widget.text.includes("mapCanvas/widgetAsset"));
-  assert.ok(widget.text.includes("ui/notifications/tool-result"));
-  assert.ok(widget.text.includes("import(primaryUrl)"));
-  assert.ok(widget.text.length < 10_000, "Stable widget loader should remain small");
-  assert.equal(
-    widget._meta.ui.domain,
-    "https://map-canvas.android-mxdiego9.workers.dev",
-  );
-  assert.equal(
-    widget._meta["openai/widgetDomain"],
-    "https://map-canvas.android-mxdiego9.workers.dev",
-  );
-  assert.deepEqual(widget._meta.ui.csp.resourceDomains, [
-    "https://tile.openstreetmap.org",
-    "https://map-canvas.android-mxdiego9.workers.dev",
-  ]);
+  assert.ok(widget.text.includes("OpenStreetMap"));
+  assert.ok(widget.text.includes("日別表示"));
+  assert.ok(widget.text.includes("popup-link"));
+  assert.ok(!widget.text.includes("sendFollowUpMessage"));
+  assert.ok(widget.text.length < 900_000, "Widget bundle grew unexpectedly large");
+  assert.equal(widget._meta.ui.prefersBorder, true);
+  assert.deepEqual(widget._meta.ui.csp.resourceDomains, ["https://tile.openstreetmap.org"]);
+  return widget;
 });
 
 console.log("Production smoke test passed: health, initialize, tools/list, tools/call, resources/read");

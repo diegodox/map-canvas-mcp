@@ -1,6 +1,13 @@
 import L, { type LatLngExpression, type Map as LeafletMap } from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { findHostData } from "./host-data";
+import {
+  App,
+  applyDocumentTheme,
+  applyHostFonts,
+  applyHostStyleVariables,
+  type McpUiDisplayMode,
+  type McpUiHostContext,
+} from "@modelcontextprotocol/ext-apps";
 import "./style.css";
 
 type Coordinate = { lat: number; lng: number };
@@ -40,22 +47,6 @@ type MapData = {
 };
 
 type PlaceEntry = { place: Place; index: number };
-
-type WidgetAsset = {
-  version?: string;
-  url?: string;
-  fallbackUrl?: string;
-};
-
-type MapCanvasBootstrap = {
-  asset?: WidgetAsset;
-  fallback?: boolean;
-  initialToolResult?: unknown;
-};
-
-type WindowWithBootstrap = Window & {
-  __MAP_CANVAS_BOOTSTRAP__?: MapCanvasBootstrap;
-};
 
 const CATEGORY_LABEL: Record<Category, string> = {
   stay: "宿泊",
@@ -120,7 +111,7 @@ let currentData: MapData | undefined;
 let selectedDay = "all";
 let currentEntries: PlaceEntry[] = [];
 let hasRendered = false;
-let currentDisplayMode: DisplayMode = "inline";
+let currentDisplayMode: McpUiDisplayMode = "inline";
 let carouselTimer: number | undefined;
 
 function requiredElement(id: string): HTMLElement {
@@ -262,14 +253,7 @@ function mapsUrl(place: Place): string {
 }
 
 function openExternal(href: string): void {
-  const openai = (window as OpenAICompatibility).openai;
-  if (openai?.openExternal) {
-    void openai
-      .openExternal({ href, redirectUrl: false })
-      .catch(() => window.open(href, "_blank", "noopener,noreferrer"));
-    return;
-  }
-  window.open(href, "_blank", "noopener,noreferrer");
+  void app.openLink({ url: href });
 }
 
 function popupFor(entries: PlaceEntry[]): HTMLElement {
@@ -555,7 +539,6 @@ function renderMapView(data: MapData): void {
   requestAnimationFrame(() => {
     activeMap.invalidateSize();
     fitCurrentView();
-    sendSizeOnce();
   });
 }
 
@@ -575,105 +558,6 @@ function showError(message: string): void {
   loadingElement.classList.add("error");
 }
 
-type JsonRpcMessage = {
-  jsonrpc?: string;
-  id?: number;
-  method?: string;
-  params?: unknown;
-  result?: unknown;
-  error?: unknown;
-};
-
-type PendingRequest = {
-  resolve: (value: unknown) => void;
-  reject: (reason: unknown) => void;
-};
-
-const pendingRequests = new Map<number, PendingRequest>();
-let nextRequestId = 1;
-
-function post(message: JsonRpcMessage): void {
-  window.parent.postMessage(message, "*");
-}
-
-function request(method: string, params: unknown): Promise<unknown> {
-  const id = nextRequestId++;
-  post({ jsonrpc: "2.0", id, method, params });
-  return new Promise((resolve, reject) => {
-    pendingRequests.set(id, { resolve, reject });
-  });
-}
-
-function renderCandidate(value: unknown): boolean {
-  const data = findHostData(value, parseMapData);
-  if (!data) return false;
-  render(data);
-  return true;
-}
-
-function receiveToolResult(params: unknown): void {
-  if (!renderCandidate(params)) {
-    showError("表示できる地点データがありません。");
-  }
-}
-
-function sendSizeOnce(): void {
-  post({
-    jsonrpc: "2.0",
-    method: "ui/notifications/size-changed",
-    params: {
-      width: Math.ceil(document.documentElement.getBoundingClientRect().width),
-      height: Math.min(Math.ceil(document.body.scrollHeight), 640),
-    },
-  });
-}
-
-window.addEventListener(
-  "message",
-  (event: MessageEvent<JsonRpcMessage>) => {
-    if (event.source !== window.parent) return;
-    const message = event.data;
-    if (!message || message.jsonrpc !== "2.0") return;
-
-    if (message.id !== undefined && pendingRequests.has(message.id)) {
-      const pending = pendingRequests.get(message.id)!;
-      pendingRequests.delete(message.id);
-      if (message.error !== undefined) pending.reject(message.error);
-      else pending.resolve(message.result);
-      return;
-    }
-
-    if (message.method === "ui/notifications/tool-result") {
-      receiveToolResult(message.params);
-      return;
-    }
-
-    if (message.method === "ui/notifications/tool-input") {
-      renderCandidate(message.params);
-    }
-  },
-  { passive: true },
-);
-
-type DisplayMode = "inline" | "fullscreen" | "pip";
-
-type DisplayModeResult = { mode?: DisplayMode } | undefined;
-
-type OpenAIGlobals = {
-  toolOutput?: unknown;
-  toolInput?: unknown;
-  toolResponseMetadata?: unknown;
-  displayMode?: DisplayMode;
-  view?: unknown;
-};
-
-type OpenAICompatibility = Window & {
-  openai?: OpenAIGlobals & {
-    requestDisplayMode?: (options: { mode: DisplayMode }) => Promise<DisplayModeResult>;
-    openExternal?: (options: { href: string; redirectUrl?: boolean }) => Promise<unknown>;
-  };
-};
-
 function refreshMapLayout(): void {
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
@@ -683,7 +567,7 @@ function refreshMapLayout(): void {
   });
 }
 
-function syncDisplayMode(mode: DisplayMode): void {
+function syncDisplayMode(mode: McpUiDisplayMode): void {
   currentDisplayMode = mode;
   const isFullscreen = mode === "fullscreen";
   document.querySelector(".shell")?.setAttribute("data-display-mode", mode);
@@ -695,42 +579,13 @@ function syncDisplayMode(mode: DisplayMode): void {
   refreshMapLayout();
 }
 
-function refreshHostActions(): void {
-  const openai = (window as OpenAICompatibility).openai;
-  displayModeButton.hidden = !openai?.requestDisplayMode;
-  syncDisplayMode(openai?.displayMode ?? currentDisplayMode);
-}
-
-function tryCompatibilityData(): void {
-  refreshHostActions();
-  if (hasRendered) return;
-  const openai = (window as OpenAICompatibility).openai;
-  renderCandidate(openai?.toolOutput) ||
-    renderCandidate(openai?.toolInput) ||
-    renderCandidate(openai?.toolResponseMetadata) ||
-    renderCandidate(openai?.view);
-}
-
-function applyHostGlobals(globals: OpenAIGlobals | undefined): void {
-  if (globals?.displayMode) syncDisplayMode(globals.displayMode);
-  if (!hasRendered) {
-    renderCandidate(globals?.toolOutput) ||
-      renderCandidate(globals?.toolInput) ||
-      renderCandidate(globals?.toolResponseMetadata) ||
-      renderCandidate(globals?.view);
-  }
-  if (hasRendered) refreshMapLayout();
-}
-
-async function requestDisplayMode(targetMode: DisplayMode): Promise<void> {
-  const openai = (window as OpenAICompatibility).openai;
-  if (!openai?.requestDisplayMode) return;
+async function requestDisplayMode(targetMode: McpUiDisplayMode): Promise<void> {
   displayModeButton.disabled = true;
   try {
-    const result = await openai.requestDisplayMode({ mode: targetMode });
-    syncDisplayMode(result?.mode ?? openai.displayMode ?? targetMode);
+    const result = await app.requestDisplayMode({ mode: targetMode });
+    syncDisplayMode(result.mode ?? targetMode);
   } catch {
-    syncDisplayMode(openai.displayMode ?? currentDisplayMode);
+    syncDisplayMode(app.getHostContext()?.displayMode ?? currentDisplayMode);
   } finally {
     displayModeButton.disabled = false;
   }
@@ -738,39 +593,36 @@ async function requestDisplayMode(targetMode: DisplayMode): Promise<void> {
 
 resetButton.addEventListener("click", fitCurrentView);
 displayModeButton.addEventListener("click", async () => {
-  const targetMode: DisplayMode = currentDisplayMode === "fullscreen" ? "inline" : "fullscreen";
+  const targetMode: McpUiDisplayMode = currentDisplayMode === "fullscreen" ? "inline" : "fullscreen";
   await requestDisplayMode(targetMode);
 });
 
-window.addEventListener(
-  "openai:set_globals",
-  (event) => {
-    const globals = (event as CustomEvent<{ globals?: OpenAIGlobals }>).detail?.globals;
-    applyHostGlobals(globals ?? (window as OpenAICompatibility).openai);
-  },
-  { passive: true },
-);
-
-const bootstrapToolResult = (window as WindowWithBootstrap).__MAP_CANVAS_BOOTSTRAP__
-  ?.initialToolResult;
-if (bootstrapToolResult !== undefined) {
-  receiveToolResult(bootstrapToolResult);
+function applyHostContext(context: McpUiHostContext | undefined): void {
+  if (!context) return;
+  if (context.theme) applyDocumentTheme(context.theme);
+  if (context.styles?.variables) applyHostStyleVariables(context.styles.variables);
+  if (context.styles?.css?.fonts) applyHostFonts(context.styles.css.fonts);
+  displayModeButton.hidden = !context.availableDisplayModes?.includes("fullscreen");
+  if (context.displayMode) syncDisplayMode(context.displayMode);
+  if (hasRendered) refreshMapLayout();
 }
 
-void request("ui/initialize", {
-  appCapabilities: {},
-  appInfo: { name: "Map Canvas", version: "0.6.5" },
-  protocolVersion: "2026-01-26",
-})
-  .then(() => {
-    post({
-      jsonrpc: "2.0",
-      method: "ui/notifications/initialized",
-      params: {},
-    });
-    tryCompatibilityData();
-  })
-  .catch(() => {
-    tryCompatibilityData();
+const app = new App({ name: "Map Canvas", version: "1.0.0" });
+
+app.onerror = (error) => console.error("[map-canvas] app error", error);
+
+app.ontoolresult = (result) => {
+  const data = parseMapData(result.structuredContent);
+  if (data) render(data);
+  else showError("表示できる地点データがありません。");
+};
+
+app.onhostcontextchanged = applyHostContext;
+
+app
+  .connect()
+  .then(() => applyHostContext(app.getHostContext()))
+  .catch((error: unknown) => {
+    console.error("[map-canvas] failed to connect to host", error);
     if (!hasRendered) showError("ホストへ接続できませんでした。");
   });
