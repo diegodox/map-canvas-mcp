@@ -183,7 +183,7 @@ function createServer(): McpServer {
             ui: {
               prefersBorder: true,
               domain: WIDGET_DOMAIN,
-              csp: { resourceDomains: [...TILE_DOMAINS] },
+              csp: { connectDomains: [], resourceDomains: [...TILE_DOMAINS] },
             },
           },
         },
