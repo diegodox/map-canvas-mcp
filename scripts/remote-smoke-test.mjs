@@ -156,7 +156,7 @@ await eventually(async () => {
   assert.ok(widget.text.includes("日別表示"));
   assert.ok(widget.text.includes("popup-link"));
   assert.ok(!widget.text.includes("sendFollowUpMessage"));
-  assert.ok(widget.text.length < 900_000, "Widget bundle grew unexpectedly large");
+  assert.ok(widget.text.length < 500_000, "Widget bundle grew unexpectedly large");
   assert.equal(widget._meta.ui.prefersBorder, true);
   assert.deepEqual(widget._meta.ui.csp.resourceDomains, ["https://tile.openstreetmap.org"]);
   return widget;
